@@ -3,6 +3,8 @@
 #include "TypeStructure.h"
 #include "SpatialGDKEditorInteropCodeGenerator.h"
 
+#include "Engine/SCS_Node.h"
+
 FString GetFullCPPName(UClass* Class)
 {
 	if (Class->IsChildOf(AActor::StaticClass()))
@@ -592,8 +594,49 @@ FUnrealRPCsByType GetAllRPCsByType(TSharedPtr<FUnrealType> TypeInfo)
 			RPCsByType.FindOrAdd(RPC.Value->Type).Add(RPC.Value);
 		}
 		return true;
-	}, true);
+	}, false);
 	return RPCsByType;
+}
+
+TArray<UClass*> GetAllComponents(TSharedPtr<FUnrealType> TypeInfo)
+{
+	UClass* Class = Cast<UClass>(TypeInfo->Type);
+
+	TArray<UClass*> ComponentClasses;
+	if (AActor* ContainerCDO = Cast<AActor>(Class->GetDefaultObject()))
+	{
+		TInlineComponentArray<UActorComponent*> NativeComponents;
+		ContainerCDO->GetComponents(NativeComponents);
+
+		for (UActorComponent* Component : NativeComponents)
+		{
+			ComponentClasses.Add(Component->GetClass());
+		}
+
+		// Components that are added in a blueprint won't appear in the CDO.
+		if (UBlueprintGeneratedClass* BGC = Cast<UBlueprintGeneratedClass>(Class))
+		{
+			// The 'ComponentTemplates' array seems to be always empty when the Interop codegen is
+			// ran, and the actual components are found in the SimpleConstructionScript nodes below.
+			//for (UActorComponent* Component : BGC->ComponentTemplates)
+			//{
+			//	ComponentClasses.Add(Component->GetClass());
+			//}
+
+			if (USimpleConstructionScript* SCS = BGC->SimpleConstructionScript)
+			{
+				for (USCS_Node* Node : SCS->GetAllNodes())
+				{
+					if (Node->ComponentTemplate)
+					{
+						ComponentClasses.Add(Node->ComponentTemplate->GetClass());
+					}
+				}
+			}
+		}
+	}
+
+	return ComponentClasses;
 }
 
 TArray<TSharedPtr<FUnrealProperty>> GetFlatRPCParameters(TSharedPtr<FUnrealRPC> RPCNode)
