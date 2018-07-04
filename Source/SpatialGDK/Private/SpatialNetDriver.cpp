@@ -808,7 +808,15 @@ USpatialNetConnection * USpatialNetDriver::GetSpatialOSNetConnection() const
 	}
 	else
 	{
-		return Cast<USpatialNetConnection>(ClientConnections[0]);
+		// IMPROBABLE - ClientConnections could be empty
+		if(ClientConnections.Num() > 0)
+		{
+			return Cast<USpatialNetConnection>(ClientConnections[0]);
+		}
+		else
+		{
+			return nullptr;
+		}
 	}
 }
 

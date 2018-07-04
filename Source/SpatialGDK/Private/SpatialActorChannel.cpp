@@ -135,15 +135,16 @@ bool USpatialActorChannel::CleanUp(const bool bForDestroy)
 {
 	UnbindFromSpatialView();
 
-#if WITH_EDITOR
-	if (SpatialNetDriver->IsServer() &&
-		SpatialNetDriver->GetWorld()->WorldType == EWorldType::PIE &&
-		SpatialNetDriver->GetEntityRegistry()->GetActorFromEntityId(ActorEntityId.ToSpatialEntityId()))
-	{
+	// IMPROBABLE - World could be null at this point
+//#if WITH_EDITOR
+//	if (SpatialNetDriver->IsServer() &&
+//		SpatialNetDriver->GetWorld()->WorldType == EWorldType::PIE &&
+//		SpatialNetDriver->GetEntityRegistry()->GetActorFromEntityId(ActorEntityId.ToSpatialEntityId()))
+//	{
 		// If we're running in PIE, as a server worker, and the entity hasn't already been cleaned up, delete it on shutdown.
 		DeleteEntityIfAuthoritative();
-	}
-#endif
+//	}
+//#endif
 
 	return UActorChannel::CleanUp(bForDestroy);
 }
