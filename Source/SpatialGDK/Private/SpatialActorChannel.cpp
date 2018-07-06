@@ -391,7 +391,6 @@ bool USpatialActorChannel::ReplicateActor()
 			// Calculate initial spatial position (but don't send component update) and create the entity.
 			LastSpatialPosition = GetActorSpatialPosition(Actor);
 			CreateEntityRequestId = Interop->SendCreateEntityRequest(this, LastSpatialPosition, PlayerWorkerId, InitialRepChanged, MigratableChanged);
-			bCreatingNewEntity = false;
 		}
 		else
 		{
@@ -408,12 +407,19 @@ bool USpatialActorChannel::ReplicateActor()
 
 	ActorReplicator->RepState->LastChangelistIndex = ChangelistState->HistoryEnd;
 
-	for (UActorComponent* ActorComp : Actor->GetReplicatedComponents())
+	if (bCreatingNewEntity)
 	{
-		USpatialTypeBinding* ComponentTypeBinding = Interop->GetTypeBindingByClass(ActorComp->GetClass());
-		if (ActorComp && ActorComp->GetIsReplicated() && ComponentTypeBinding) // Only replicated subobjects with type bindings
+		bCreatingNewEntity = false;
+	}
+	else
+	{
+		for (UActorComponent* ActorComp : Actor->GetReplicatedComponents())
 		{
-			bWroteSomethingImportant |= ReplicateSubobject(ActorComp, RepFlags);
+			USpatialTypeBinding* ComponentTypeBinding = Interop->GetTypeBindingByClass(ActorComp->GetClass());
+			if (ActorComp && ActorComp->GetIsReplicated() && ComponentTypeBinding) // Only replicated subobjects with type bindings
+			{
+				bWroteSomethingImportant |= ReplicateSubobject(ActorComp, RepFlags);
+			}
 		}
 	}
 
@@ -461,7 +467,7 @@ bool USpatialActorChannel::ReplicateSubobject(UObject *Obj, const FReplicationFl
 		const int32 HistoryIndex = i % FRepChangelistState::MAX_CHANGE_HISTORY;
 		FRepChangedHistory& HistoryItem = ChangelistState->ChangeHistory[HistoryIndex];
 		TArray<uint16> Temp = RepChanged;
-		replicator.RepLayout->MergeChangeList((uint8*)Actor, HistoryItem.Changed, Temp, RepChanged);
+		replicator.RepLayout->MergeChangeList((uint8*)Obj, HistoryItem.Changed, Temp, RepChanged);
 	}
 
 	const bool bCompareIndexSame = replicator.RepState->LastCompareIndex == ChangelistState->CompareIndex;
@@ -546,11 +552,20 @@ void USpatialActorChannel::SetChannelActor(AActor* InActor)
 void USpatialActorChannel::PreReceiveSpatialUpdate()
 {
 	Actor->PreNetReceive();
+	ActorReplicator->RepLayout->InitShadowData(ActorReplicator->RepState->StaticBuffer, Actor->GetClass(), (uint8*)Actor);
 }
 
 void USpatialActorChannel::PreReceiveSpatialUpdateSubobject(UActorComponent* Component)
 {
 	Component->PreNetReceive();
+
+	FNetworkGUID ObjectNetGUID = Connection->Driver->GuidCache->GetOrAssignNetGUID(Component);
+	if (!ObjectNetGUID.IsDefault() && ObjectNetGUID.IsValid())
+	{
+		TWeakObjectPtr<UObject> Obj(Component);
+		FObjectReplicator& Replicator = FindOrCreateReplicator(Obj).Get();
+		Replicator.RepLayout->InitShadowData(Replicator.RepState->StaticBuffer, Component->GetClass(), (uint8*)Component);
+	}
 }
 
 void USpatialActorChannel::PostReceiveSpatialUpdate(const TArray<UProperty*>& RepNotifies)
@@ -562,9 +577,10 @@ void USpatialActorChannel::PostReceiveSpatialUpdate(const TArray<UProperty*>& Re
 
 void USpatialActorChannel::PostReceiveSpatialUpdateSubobject(UActorComponent* Component, const TArray<UProperty*>& RepNotifies)
 {
-	TWeakObjectPtr<UObject> Obj(Component);
-	if (ReplicationMap.Find(Obj))
+	FNetworkGUID ObjectNetGUID = Connection->Driver->GuidCache->GetOrAssignNetGUID(Component);
+	if (!ObjectNetGUID.IsDefault() && ObjectNetGUID.IsValid())
 	{
+		TWeakObjectPtr<UObject> Obj(Component);
 		FObjectReplicator& Replicator = FindOrCreateReplicator(Obj).Get();
 		Component->PostNetReceive();
 		Replicator.RepNotifies = RepNotifies;

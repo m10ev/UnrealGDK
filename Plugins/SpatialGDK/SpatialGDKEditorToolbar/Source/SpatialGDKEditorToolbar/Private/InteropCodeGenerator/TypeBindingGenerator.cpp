@@ -980,7 +980,7 @@ void GenerateFunction_BindToView(FCodeWriter& SourceWriter, UClass* Class, const
 			})""", *SchemaReplicatedDataName(Group, Class, true));
 		SourceWriter.Printf(R"""(
 			USpatialActorChannel* ActorChannel = Interop->GetActorChannelByEntityId(Op.EntityId);
-			check(ActorChannel);
+			if (!ActorChannel) return;
 			ReceiveUpdate_%s(ActorChannel, Op.Update);)""",
 			*GetReplicatedPropertyGroupName(Group));
 		SourceWriter.Outdent();
@@ -1001,7 +1001,7 @@ void GenerateFunction_BindToView(FCodeWriter& SourceWriter, UClass* Class, const
 		})""", *SchemaMigratableDataName(Class, true));
 	SourceWriter.Print(R"""(
 		USpatialActorChannel* ActorChannel = Interop->GetActorChannelByEntityId(Op.EntityId);
-		check(ActorChannel);
+		if (!ActorChannel) return;
 		ReceiveUpdate_Migratable(ActorChannel, Op.Update);)""");
 	SourceWriter.Outdent();
 	SourceWriter.Print("}));");
@@ -1155,7 +1155,11 @@ void GenerateFunction_CreateActorEntity(FCodeWriter& SourceWriter, UClass* Class
 
 			SourceWriter.PrintNewLine();
 
-			SourceWriter.Printf("FPropertyChangeState %sChangeState = Channel->CreateSubobjectChangeState(Channel->Actor->FindComponentByClass<%s>());", *ComponentClassName, *GetFullCPPName(ComponentClass));
+			SourceWriter.BeginScope();
+			SourceWriter.Printf("UActorComponent* Component = Channel->Actor->FindComponentByClass<%s>();", *GetFullCPPName(ComponentClass));
+			SourceWriter.Printf("if (Component->IsSupportedForNetworking())");
+			SourceWriter.BeginScope();
+			SourceWriter.Printf("FPropertyChangeState %sChangeState = Channel->CreateSubobjectChangeState(Component);", *ComponentClassName);
 			SourceWriter.Printf("USpatialTypeBinding_%s* %sTypeBinding = Cast<USpatialTypeBinding_%s>(Interop->GetTypeBindingByClass(%s::StaticClass()));",
 				*ComponentClassName, *ComponentClassName, *ComponentClassName, *GetFullCPPName(ComponentClass));
 			SourceWriter.Printf("%sTypeBinding->BuildSpatialComponentUpdate(%sChangeState, Channel, %s);", *ComponentClassName, *ComponentClassName, *FString::Join(BuildUpdateArgs, TEXT(", ")));
@@ -1169,6 +1173,8 @@ void GenerateFunction_CreateActorEntity(FCodeWriter& SourceWriter, UClass* Class
 					*ComponentClassName);
 			}
 			SourceWriter.Printf("%sMigratableDataUpdate.ApplyTo(%sMigratableData);", *ComponentClassName, *ComponentClassName);
+			SourceWriter.End();
+			SourceWriter.End();
 
 			for (EReplicatedPropertyGroup Group : GetAllReplicatedPropertyGroups())
 			{

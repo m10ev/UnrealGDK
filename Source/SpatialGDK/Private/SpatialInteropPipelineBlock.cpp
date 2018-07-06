@@ -25,6 +25,8 @@
 // TODO(David): Needed for ApplyNetworkMovementMode hack below.
 #include "GameFramework/CharacterMovementComponent.h"
 
+#include "BPGameStateScavengersCSingleClientRepDataAddComponentOp.h"
+
 DEFINE_LOG_CATEGORY(LogSpatialGDKInteropPipelineBlock);
 
 void USpatialInteropPipelineBlock::Init(UEntityRegistry* Registry, USpatialNetDriver* Driver, UWorld* LoadedWorld)
@@ -161,37 +163,82 @@ void USpatialInteropPipelineBlock::LeaveCriticalSection()
 	TSharedPtr<worker::Connection> LockedConnection = NetDriver->GetSpatialOS()->GetConnection().Pin();
 	TSharedPtr<worker::View> LockedView = NetDriver->GetSpatialOS()->GetView().Pin();
 
-	// Add entities.
-	for (auto& PendingAddEntity : PendingAddEntities)
+	if (!World->GetGameState())
 	{
-		AddEntityImpl(PendingAddEntity);
+		worker::EntityId GameStateId = 0;
+		for (auto& PendingAddComponent : PendingAddComponents)
+		{
+			if (PendingAddComponent.AddComponentOp->IsA<UBPGameStateScavengersCSingleClientRepDataAddComponentOp>())
+			{
+				GameStateId = PendingAddComponent.AddComponentOp->EntityId;
+			}
+		}
+
+		if (GameStateId)
+		{
+			TArray<FEntityId> NewAddEntities;
+			TArray<FPendingAddComponentWrapper> NewAddComponents;
+
+			for (auto& PendingAddEntity : PendingAddEntities)
+			{
+				if (PendingAddEntity.ToSpatialEntityId() == GameStateId)
+				{
+					AddEntityImpl(PendingAddEntity);
+				}
+				else
+				{
+					NewAddEntities.Add(PendingAddEntity);
+				}
+			}
+
+			for (auto& PendingAddComponent : PendingAddComponents)
+			{
+				if (PendingAddComponent.AddComponentOp->EntityId != GameStateId)
+				{
+					NewAddComponents.Add(PendingAddComponent);
+				}
+			}
+
+			PendingAddEntities = NewAddEntities;
+			PendingAddComponents = NewAddComponents;
+		}
 	}
 
-	// Apply queued add component ops and authority change ops.
-	for (auto& PendingAddComponent : PendingAddComponents)
+	if (World->GetGameState())
 	{
-		InitialiseNewComponentImpl(PendingAddComponent.EntityComponent, PendingAddComponent.AddComponentOp);
+		// Add entities.
+		for (auto& PendingAddEntity : PendingAddEntities)
+		{
+			AddEntityImpl(PendingAddEntity);
+		}
+
+		// Apply queued add component ops and authority change ops.
+		for (auto& PendingAddComponent : PendingAddComponents)
+		{
+			InitialiseNewComponentImpl(PendingAddComponent.EntityComponent, PendingAddComponent.AddComponentOp);
+		}
+
+		// Apply queued remove component ops.
+		for (auto& PendingRemoveComponent : PendingRemoveComponents)
+		{
+			DisableComponentImpl(PendingRemoveComponent);
+		}
+
+		// Remove entities.
+		for (auto& PendingRemoveEntity : PendingRemoveEntities)
+		{
+			RemoveEntityImpl(PendingRemoveEntity);
+		}
+
+		// Mark that we've left the critical section.
+		PendingAddEntities.Empty();
+		PendingAddComponents.Empty();
+		PendingAuthorityChanges.Empty();
+		PendingRemoveComponents.Empty();
+		PendingRemoveEntities.Empty();
 	}
 
-	// Apply queued remove component ops.
-	for (auto& PendingRemoveComponent : PendingRemoveComponents)
-	{
-		DisableComponentImpl(PendingRemoveComponent);
-	}
-
-	// Remove entities.
-	for (auto& PendingRemoveEntity : PendingRemoveEntities)
-	{
-		RemoveEntityImpl(PendingRemoveEntity);
-	}
-
-	// Mark that we've left the critical section.
 	bInCriticalSection = false;
-	PendingAddEntities.Empty();
-	PendingAddComponents.Empty();
-	PendingAuthorityChanges.Empty();
-	PendingRemoveComponents.Empty();
-	PendingRemoveEntities.Empty();
 
 	if (NextBlock)
 	{
@@ -400,12 +447,6 @@ AActor* USpatialInteropPipelineBlock::GetOrCreateActor(TSharedPtr<worker::Connec
 			auto Channel = Cast<USpatialActorChannel>(Connection->CreateChannel(CHTYPE_Actor, NetDriver->IsServer()));
 			check(Channel);
 
-			PackageMap->ResolveEntityActor(EntityActor, EntityId, UnrealMetadataComponent->subobject_name_to_offset());
-			Channel->SetChannelActor(EntityActor);
-
-			// Update interest on the entity's components after receiving initial component data (so Role and RemoteRole are properly set).
-			NetDriver->GetSpatialInterop()->SendComponentInterests(Channel, EntityId.ToSpatialEntityId());
-
 			if (bDoingDeferredSpawn)
 			{
 				auto InitialLocation = SpatialConstants::SpatialOSCoordinatesToLocation(PositionComponent->coords());
@@ -413,12 +454,21 @@ AActor* USpatialInteropPipelineBlock::GetOrCreateActor(TSharedPtr<worker::Connec
 				EntityActor->FinishSpawning(FTransform(FRotator::ZeroRotator, SpawnLocation));
 			}
 
+			PackageMap->ResolveEntityActor(EntityActor, EntityId, UnrealMetadataComponent->subobject_name_to_offset());
+			Channel->SetChannelActor(EntityActor);
+
+			// Update interest on the entity's components after receiving initial component data (so Role and RemoteRole are properly set).
+			NetDriver->GetSpatialInterop()->SendComponentInterests(Channel, EntityId.ToSpatialEntityId());
+
 			// Apply initial replicated properties.
 			// This was moved to after FinishingSpawning because components existing only in blueprints aren't added until spawning is complete
 			// Potentially we could split out the initial actor state and the initial component state
 			for (FPendingAddComponentWrapper& PendingAddComponent : PendingAddComponents)
 			{
-				NetDriver->GetSpatialInterop()->ReceiveAddComponent(Channel, PendingAddComponent.AddComponentOp);
+				if (PendingAddComponent.AddComponentOp->EntityId == EntityId.ToSpatialEntityId())
+				{
+					NetDriver->GetSpatialInterop()->ReceiveAddComponent(Channel, PendingAddComponent.AddComponentOp);
+				}
 			}
 
 			// This is a bit of a hack unfortunately, among the core classes only PlayerController implements this function and it requires

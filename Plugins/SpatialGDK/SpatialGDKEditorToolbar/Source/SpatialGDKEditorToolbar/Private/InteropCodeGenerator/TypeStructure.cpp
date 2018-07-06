@@ -602,7 +602,7 @@ TArray<UClass*> GetAllComponents(TSharedPtr<FUnrealType> TypeInfo)
 {
 	UClass* Class = Cast<UClass>(TypeInfo->Type);
 
-	TArray<UClass*> ComponentClasses;
+	TSet<UClass*> ComponentClasses;
 	if (AActor* ContainerCDO = Cast<AActor>(Class->GetDefaultObject()))
 	{
 		TInlineComponentArray<UActorComponent*> NativeComponents;
@@ -636,7 +636,7 @@ TArray<UClass*> GetAllComponents(TSharedPtr<FUnrealType> TypeInfo)
 		}
 	}
 
-	return ComponentClasses;
+	return ComponentClasses.Array();
 }
 
 TArray<TSharedPtr<FUnrealProperty>> GetFlatRPCParameters(TSharedPtr<FUnrealRPC> RPCNode)

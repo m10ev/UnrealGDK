@@ -199,8 +199,8 @@ bool RunProcess(const FString& Command, const FString& Arguments)
 		FPlatformProcess::GetProcReturnCode(ProcHandle, &ReturnCode);
 	}
 
-	FPlatformProcess::ClosePipe(ReadPipe, WritePipe);
-	FPlatformProcess::CloseProc(ProcHandle);
+	//FPlatformProcess::ClosePipe(ReadPipe, WritePipe);
+	//FPlatformProcess::CloseProc(ProcHandle);
 
 	if (ReturnCode != 0)
 	{
