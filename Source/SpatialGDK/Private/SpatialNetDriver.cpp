@@ -43,6 +43,8 @@ bool USpatialNetDriver::InitBase(bool bInitAsClient, FNetworkNotify* InNotify, c
 	SpatialOSInstance->OnDisconnectedDelegate.AddDynamic(this, &USpatialNetDriver::OnSpatialOSDisconnected);
 	SpatialOutputDevice = MakeUnique<FSpatialOutputDevice>(SpatialOSInstance, TEXT("Unreal"));
 
+	View = MakeShared<worker::View>();
+
 	// Set up the worker config.
 	// todo-giray: Give this the correct value
 	WorkerConfig.Networking.UseExternalIp = false;
@@ -91,7 +93,8 @@ void USpatialNetDriver::OnMapLoaded(UWorld* LoadedWorld)
 		return;
 	}
 
-	UE_LOG(LogSpatialOSNetDriver, Log, TEXT("Loaded Map %s. Connecting to SpatialOS."), *LoadedWorld->GetName());
+	UE_LOG(LogSpatialOSNetDriver, Log, TEXT("Loaded Map %s. Connecting to SpatialOS..."), *LoadedWorld->GetName());
+
 
 	checkf(!SpatialOSInstance->IsConnected(), TEXT("SpatialOS should not be connected already. This is probably because we attempted to travel to a different level, which current isn't supported."));
 
@@ -105,6 +108,14 @@ void USpatialNetDriver::OnMapLoaded(UWorld* LoadedWorld)
 	// Set up manager objects.
 	EntityRegistry = NewObject<UEntityRegistry>(this);
 	Interop = NewObject<USpatialInterop>(this);
+}
+
+void USpatialNetDriver::Connect()
+{
+	worker::ConnectionParameters Params;
+	// Set up params
+
+	worker::Connection::ConnectAsync()
 }
 
 void USpatialNetDriver::OnSpatialOSConnected()

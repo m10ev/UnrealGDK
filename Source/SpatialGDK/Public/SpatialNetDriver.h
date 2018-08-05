@@ -9,6 +9,8 @@
 #include "PlayerSpawnRequestSender.h"
 #include "SpatialGDKWorkerConfigurationData.h"
 #include "SpatialOutputDevice.h"
+#include "improbable/view.h"
+
 #include "SpatialNetDriver.generated.h"
 
 class UEntityPipeline;
@@ -56,22 +58,28 @@ public:
 	virtual bool IsLevelInitializedForActor(const AActor* InActor, const UNetConnection* InConnection) const override;
 	// End UNetDriver interface.
 
-	USpatialOS* GetSpatialOS() const
-	{
-		return SpatialOSInstance;
-	}
+	TSharedPtr<worker::Connection> Connection;
+	TSharedPtr<worker::View> View;
+
+	void Connect();
+	void USpatialNetDriver::IsConnected() const;
+
+	//USpatialOS* GetSpatialOS() const
+	//{
+	//	return SpatialOSInstance;
+	//}
 
 	// Returns the "100% reliable" connection to SpatialOS.
 	// On the server, it is designated to be the first client connection.
 	// On the client, this function is not meaningful (as we use ServerConnection)
 	USpatialNetConnection* GetSpatialOSNetConnection() const;
 
-	UPROPERTY()
-	USpatialInteropPipelineBlock* InteropPipelineBlock;
+	//UPROPERTY()
+	//USpatialInteropPipelineBlock* InteropPipelineBlock;
 
 	UEntityRegistry* GetEntityRegistry() { return EntityRegistry; }
 
-	USpatialOS* GetSpatialOS() { return SpatialOSInstance; }
+	//USpatialOS* GetSpatialOS() { return SpatialOSInstance; }
 	
 	// Used by USpatialSpawner (when new players join the game) and USpatialInteropPipelineBlock (when player controllers are migrated).
 	USpatialNetConnection* AcceptNewPlayer(const FURL& InUrl, bool bExistingPlayer);
@@ -86,10 +94,10 @@ public:
 protected:
 	FSpatialGDKWorkerConfigurationData WorkerConfig;
 
-	UPROPERTY()
-	USpatialOS* SpatialOSInstance;
+	//UPROPERTY()
+	//USpatialOS* SpatialOSInstance;
 
-	TUniquePtr<FSpatialOutputDevice> SpatialOutputDevice;
+	//TUniquePtr<FSpatialOutputDevice> SpatialOutputDevice;
 
 	UPROPERTY()
 	UEntityRegistry* EntityRegistry;

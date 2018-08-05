@@ -220,10 +220,10 @@ public:
 	NameToEntityIdMap* GetSingletonNameToEntityId() const;
 
 	// Accessors.
-	USpatialOS* GetSpatialOS() const
-	{
-		return SpatialOSInstance;
-	}
+	//USpatialOS* GetSpatialOS() const
+	//{
+	//	return SpatialOSInstance;
+	//}
 
 	USpatialNetDriver* GetNetDriver() const
 	{
@@ -231,8 +231,8 @@ public:
 	}
 
 private:
-	UPROPERTY()
-	USpatialOS* SpatialOSInstance;
+	//UPROPERTY()
+	//USpatialOS* SpatialOSInstance;
 
 	UPROPERTY()
 	USpatialNetDriver* NetDriver;
