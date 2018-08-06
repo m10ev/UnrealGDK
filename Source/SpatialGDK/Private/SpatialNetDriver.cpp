@@ -6,7 +6,6 @@
 #include "Engine/ChildConnection.h"
 #include "Engine/NetworkObjectList.h"
 #include "EngineGlobals.h"
-#include "EntityPipeline.h"
 #include "EntityRegistry.h"
 #include "GameFramework/GameNetworkManager.h"
 #include "Net/DataReplication.h"
@@ -14,11 +13,12 @@
 #include "SocketSubsystem.h"
 #include "SpatialActorChannel.h"
 #include "SpatialConstants.h"
-#include "SpatialInteropPipelineBlock.h"
 #include "SpatialNetConnection.h"
-#include "SpatialOS.h"
 #include "SpatialPackageMapClient.h"
 #include "SpatialPendingNetGame.h"
+
+#include "SpatialGDK/Generated/improbable/unreal/gdk/spawner.h"
+#include "SpatialGDK/Generated/SpatialComponents.h"
 
 #define ENTITY_BLUEPRINTS_FOLDER "/Game/EntityBlueprints"
 
@@ -37,13 +37,9 @@ bool USpatialNetDriver::InitBase(bool bInitAsClient, FNetworkNotify* InNotify, c
 	ChannelClasses[CHTYPE_Actor] = USpatialActorChannel::StaticClass();
 
 	// Create SpatialOS instance and setup callbacks.
-	SpatialOSInstance = NewObject<USpatialOS>(this);
-	SpatialOSInstance->OnConnectedDelegate.AddDynamic(this, &USpatialNetDriver::OnSpatialOSConnected);
-	SpatialOSInstance->OnConnectionFailedDelegate.AddDynamic(this, &USpatialNetDriver::OnSpatialOSConnectFailed);
-	SpatialOSInstance->OnDisconnectedDelegate.AddDynamic(this, &USpatialNetDriver::OnSpatialOSDisconnected);
-	SpatialOutputDevice = MakeUnique<FSpatialOutputDevice>(SpatialOSInstance, TEXT("Unreal"));
+	//SpatialOutputDevice = MakeUnique<FSpatialOutputDevice>(SpatialOSInstance, TEXT("Unreal"));
 
-	View = MakeShared<worker::View>();
+	View = MakeShared<worker::View>(improbable::unreal::Components{});
 
 	// Set up the worker config.
 	// todo-giray: Give this the correct value
@@ -96,14 +92,14 @@ void USpatialNetDriver::OnMapLoaded(UWorld* LoadedWorld)
 	UE_LOG(LogSpatialOSNetDriver, Log, TEXT("Loaded Map %s. Connecting to SpatialOS..."), *LoadedWorld->GetName());
 
 
-	checkf(!SpatialOSInstance->IsConnected(), TEXT("SpatialOS should not be connected already. This is probably because we attempted to travel to a different level, which current isn't supported."));
+	//checkf(!SpatialOSInstance->IsConnected(), TEXT("SpatialOS should not be connected already. This is probably because we attempted to travel to a different level, which current isn't supported."));
 
 	// Set the timer manager.
 	TimerManager = &LoadedWorld->GetTimerManager();
 
 	// Connect to SpatialOS.
-	SpatialOSInstance->ApplyConfiguration(WorkerConfig);
-	SpatialOSInstance->Connect();
+	//SpatialOSInstance->ApplyConfiguration(WorkerConfig);
+	//SpatialOSInstance->Connect();
 
 	// Set up manager objects.
 	EntityRegistry = NewObject<UEntityRegistry>(this);
@@ -115,21 +111,19 @@ void USpatialNetDriver::Connect()
 	worker::ConnectionParameters Params;
 	// Set up params
 
-	worker::Connection::ConnectAsync()
+	//worker::Connection::ConnectAsync()
 }
 
 void USpatialNetDriver::OnSpatialOSConnected()
 {
 	UE_LOG(LogSpatialOSNetDriver, Log, TEXT("Connected to SpatialOS."));
 
-	InteropPipelineBlock = NewObject<USpatialInteropPipelineBlock>();
-	InteropPipelineBlock->Init(EntityRegistry, this, GetWorld());
-	SpatialOSInstance->GetEntityPipeline()->AddBlock(InteropPipelineBlock);
+	//InteropPipelineBlock = NewObject<USpatialInteropPipelineBlock>();
+	//InteropPipelineBlock->Init(EntityRegistry, this, GetWorld());
+	//SpatialOSInstance->GetEntityPipeline()->AddBlock(InteropPipelineBlock);
 
 	TArray<FString> BlueprintPaths;
 	BlueprintPaths.Add(TEXT(ENTITY_BLUEPRINTS_FOLDER));
-
-	EntityRegistry->RegisterEntityBlueprints(BlueprintPaths);
 
 	// Each connection stores a URL with various optional settings (host, port, map, netspeed...)
 	// We currently don't make use of any of these as some are meaningless in a SpatialOS world, and some are less of a priority.
@@ -143,7 +137,7 @@ void USpatialNetDriver::OnSpatialOSConnected()
 	if (ServerConnection)
 	{
 		// Send the player spawn commands with retries
-		PlayerSpawner.RequestPlayer(SpatialOSInstance, TimerManager, DummyURL);
+		//PlayerSpawner.RequestPlayer(SpatialOSInstance, TimerManager, DummyURL);
 	}
 	else
 	{
@@ -161,8 +155,13 @@ void USpatialNetDriver::OnSpatialOSConnected()
 		Connection->SetClientLoginState(EClientLoginState::Welcomed);
 	}
 
-	Interop->Init(SpatialOSInstance, this, TimerManager);
+	//Interop->Init(SpatialOSInstance, this, TimerManager);
 }
+
+//void USpatialNetDriver::SpawnPlayer()
+//{
+//
+//}
 
 void USpatialNetDriver::OnSpatialOSDisconnected(const FString& Reason)
 {
@@ -748,11 +747,11 @@ void USpatialNetDriver::TickDispatch(float DeltaTime)
 	// Not calling Super:: on purpose.
 	UNetDriver::TickDispatch(DeltaTime);
 
-	if (SpatialOSInstance != nullptr && SpatialOSInstance->GetEntityPipeline() != nullptr)
-	{
-		SpatialOSInstance->ProcessOps();
-		SpatialOSInstance->GetEntityPipeline()->ProcessOps(SpatialOSInstance->GetView(), SpatialOSInstance->GetConnection(), GetWorld());
-	}
+	//if (SpatialOSInstance != nullptr && SpatialOSInstance->GetEntityPipeline() != nullptr)
+	//{
+	//	SpatialOSInstance->ProcessOps();
+	//	SpatialOSInstance->GetEntityPipeline()->ProcessOps(SpatialOSInstance->GetView(), SpatialOSInstance->GetConnection(), GetWorld());
+	//}
 }
 
 void USpatialNetDriver::ProcessRemoteFunction(

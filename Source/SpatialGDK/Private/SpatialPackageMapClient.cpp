@@ -44,10 +44,10 @@ void GetSubobjects(UObject* Object, TArray<UObject*>& InSubobjects)
 	});
 }
 
-FNetworkGUID USpatialPackageMapClient::ResolveEntityActor(AActor* Actor, FEntityId EntityId, const SubobjectToOffsetMap& SubobjectToOffset)
+FNetworkGUID USpatialPackageMapClient::ResolveEntityActor(AActor* Actor, worker::EntityId EntityId, const SubobjectToOffsetMap& SubobjectToOffset)
 {
 	FSpatialNetGUIDCache* SpatialGuidCache = static_cast<FSpatialNetGUIDCache*>(GuidCache.Get());
-	FNetworkGUID NetGUID = SpatialGuidCache->GetNetGUIDFromEntityId(EntityId.ToSpatialEntityId());
+	FNetworkGUID NetGUID = SpatialGuidCache->GetNetGUIDFromEntityId(EntityId);
 
 	// check we haven't already assigned a NetGUID to this object
 	if (!NetGUID.IsValid())
@@ -57,12 +57,12 @@ FNetworkGUID USpatialPackageMapClient::ResolveEntityActor(AActor* Actor, FEntity
 	return NetGUID;
 }
 
-void USpatialPackageMapClient::RemoveEntityActor(const FEntityId& EntityId)
+void USpatialPackageMapClient::RemoveEntityActor(const worker::EntityId& EntityId)
 {
 	FSpatialNetGUIDCache* SpatialGuidCache = static_cast<FSpatialNetGUIDCache*>(GuidCache.Get());
-	if (SpatialGuidCache->GetNetGUIDFromEntityId(EntityId.ToSpatialEntityId()).IsValid())
+	if (SpatialGuidCache->GetNetGUIDFromEntityId(EntityId).IsValid())
 	{
-		SpatialGuidCache->RemoveEntityNetGUID(EntityId.ToSpatialEntityId());
+		SpatialGuidCache->RemoveEntityNetGUID(EntityId);
 	}
 }
 
@@ -108,8 +108,8 @@ FSpatialNetGUIDCache::FSpatialNetGUIDCache(USpatialNetDriver* InDriver)
 
 FNetworkGUID FSpatialNetGUIDCache::AssignNewEntityActorNetGUID(AActor* Actor, const ::worker::Map< std::string, std::uint32_t >& SubobjectToOffset)
 {
-	FEntityId EntityId = Cast<USpatialNetDriver>(Driver)->GetEntityRegistry()->GetEntityIdFromActor(Actor);
-	check(EntityId.ToSpatialEntityId() > 0);
+	worker::EntityId EntityId = Cast<USpatialNetDriver>(Driver)->GetEntityRegistry()->GetEntityIdFromActor(Actor);
+	check(EntityId > 0);
 
 	// Get interop.
 	USpatialInterop* Interop = Cast<USpatialNetDriver>(Driver)->GetSpatialInterop();
@@ -117,10 +117,10 @@ FNetworkGUID FSpatialNetGUIDCache::AssignNewEntityActorNetGUID(AActor* Actor, co
 
 	// Set up the NetGUID and ObjectRef for this actor.
 	FNetworkGUID NetGUID = GetOrAssignNetGUID_SpatialGDK(Actor);
-	improbable::unreal::UnrealObjectRef ObjectRef{EntityId.ToSpatialEntityId(), 0, worker::Option<std::string>{}, worker::Option<improbable::unreal::UnrealObjectRef>{}};
+	improbable::unreal::UnrealObjectRef ObjectRef{EntityId, 0, worker::Option<std::string>{}, worker::Option<improbable::unreal::UnrealObjectRef>{}};
 	RegisterObjectRef(NetGUID, ObjectRef);
 	UE_LOG(LogSpatialOSPackageMap, Log, TEXT("Registered new object ref for actor: %s. NetGUID: %s, entity ID: %lld"),
-		*Actor->GetName(), *NetGUID.ToString(), EntityId.ToSpatialEntityId());
+		*Actor->GetName(), *NetGUID.ToString(), EntityId);
 	Interop->ResolvePendingOperations(Actor, ObjectRef);
 
 	// Allocate NetGUIDs for each subobject, sorting alphabetically to ensure stable references.
@@ -134,7 +134,7 @@ FNetworkGUID FSpatialNetGUIDCache::AssignNewEntityActorNetGUID(AActor* Actor, co
 			std::uint32_t Offset = OffsetIterator->second;
 
 			FNetworkGUID SubobjectNetGUID = GetOrAssignNetGUID_SpatialGDK(Subobject);
-			improbable::unreal::UnrealObjectRef SubobjectRef{EntityId.ToSpatialEntityId(), Offset, worker::Option<std::string>{}, worker::Option<improbable::unreal::UnrealObjectRef>{}};
+			improbable::unreal::UnrealObjectRef SubobjectRef{EntityId, Offset, worker::Option<std::string>{}, worker::Option<improbable::unreal::UnrealObjectRef>{}};
 			RegisterObjectRef(SubobjectNetGUID, SubobjectRef);
 			UE_LOG(LogSpatialOSPackageMap, Log, TEXT("Registered new object ref for subobject %s inside actor %s. NetGUID: %s, object ref: %s"),
 				*Subobject->GetName(), *Actor->GetName(), *SubobjectNetGUID.ToString(), *ObjectRefToString(SubobjectRef));
@@ -158,7 +158,7 @@ FNetworkGUID FSpatialNetGUIDCache::AssignNewStablyNamedObjectNetGUID(const UObje
 	{
 		OuterGUID = AssignNewStablyNamedObjectNetGUID(OuterObject);
 	}
-	improbable::unreal::UnrealObjectRef StablyNamedObjRef{ FEntityId{}.ToSpatialEntityId(),
+	improbable::unreal::UnrealObjectRef StablyNamedObjRef{ worker::EntityId{},
 		0,
 		worker::Option<std::string>(TCHAR_TO_UTF8(*Object->GetFName().ToString())),
 		(OuterGUID.IsValid() && !OuterGUID.IsDefault()) ? GetUnrealObjectRefFromNetGUID(OuterGUID) : worker::Option<improbable::unreal::UnrealObjectRef>{} };
@@ -232,11 +232,11 @@ FNetworkGUID FSpatialNetGUIDCache::GetOrAssignNetGUID_SpatialGDK(const UObject* 
 	FNetworkGUID NetGUID = GetOrAssignNetGUID(Object);
 	if (Object != nullptr)
 	{
-		UE_LOG(LogSpatialOSPackageMap, Log, TEXT("%s: GetOrAssignNetGUID for object %s returned %s. IsDynamicObject: %d"),
-			*Cast<USpatialNetDriver>(Driver)->GetSpatialOS()->GetWorkerId(),
-			*Object->GetName(),
-			*NetGUID.ToString(),
-			(int)IsDynamicObject(Object));
+		//UE_LOG(LogSpatialOSPackageMap, Log, TEXT("%s: GetOrAssignNetGUID for object %s returned %s. IsDynamicObject: %d"),
+		//	*Cast<USpatialNetDriver>(Driver)->GetSpatialOS()->GetWorkerId(),
+		//	*Object->GetName(),
+		//	*NetGUID.ToString(),
+		//	(int)IsDynamicObject(Object));
 	}
 	
 	// One major difference between how Unreal does NetGUIDs vs us is, we don't attempt to make them consistent across workers and client.
@@ -252,10 +252,10 @@ FNetworkGUID FSpatialNetGUIDCache::GetOrAssignNetGUID_SpatialGDK(const UObject* 
 		CacheObject.OuterGUID = GetOrAssignNetGUID_SpatialGDK(Object->GetOuter());
 		RegisterNetGUID_Internal(NetGUID, CacheObject);
 
-		UE_LOG(LogSpatialOSPackageMap, Log, TEXT("%s: NetGUID for object %s was not found in the cache. Generated new NetGUID %s."),
-			*Cast<USpatialNetDriver>(Driver)->GetSpatialOS()->GetWorkerId(),
-			*Object->GetName(),
-			*NetGUID.ToString());
+		//UE_LOG(LogSpatialOSPackageMap, Log, TEXT("%s: NetGUID for object %s was not found in the cache. Generated new NetGUID %s."),
+		//	*Cast<USpatialNetDriver>(Driver)->GetSpatialOS()->GetWorkerId(),
+		//	*Object->GetName(),
+		//	*NetGUID.ToString());
 	}
 
 	check((NetGUID.IsValid() && !NetGUID.IsDefault()) || Object == nullptr);

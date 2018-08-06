@@ -261,7 +261,7 @@ bool SpatialGDKGenerateInteropCode()
 	FString AbsoluteCombinedIntermediatePath = FPaths::ConvertRelativePathToFull(CombinedIntermediatePath);
 	FPlatformFileManager::Get().GetPlatformFile().CreateDirectoryTree(*AbsoluteCombinedIntermediatePath);
 
-	const FString CombinedForwardingCodePath = FPaths::Combine(*FPaths::GetPath(FPaths::GameSourceDir()), *GetOutputPath(ConfigFilePath).Append(TEXT("Typebindings/")));
+	const FString CombinedForwardingCodePath = FPaths::Combine(*FPaths::GetPath(FPaths::GameSourceDir()), *GetOutputPath(ConfigFilePath));
 	FString AbsoluteCombinedForwardingCodePath = FPaths::ConvertRelativePathToFull(CombinedForwardingCodePath);
 
 	UE_LOG(LogSpatialGDKInteropCodeGenerator, Display, TEXT("Schema path %s - Forwarding code path %s"), *AbsoluteCombinedSchemaPath, *AbsoluteCombinedForwardingCodePath);
@@ -313,7 +313,7 @@ bool SpatialGDKGenerateInteropCode()
 	const FString CoreSchemaPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(*FPaths::GetPath(FPaths::GetProjectFilePath()), TEXT("../spatial/schema/improbable/unreal/gdk/")));
 	const FString StandardSchemaPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(*FPaths::GetPath(FPaths::GetProjectFilePath()), TEXT("Binaries/ThirdParty/Improbable/Programs/schema/improbable")));
 
-	const FString CppOutputPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(*FPaths::GetPath(FPaths::GameSourceDir()), *GetOutputPath(ConfigFilePath).Append(TEXT("Cpp/"))));
+	const FString CppOutputPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(*FPaths::GetPath(FPaths::GetProjectFilePath()), TEXT("Source/SpatialGDK/Generated")));
 	const FString JsonOutputPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(*FPaths::GetPath(FPaths::GetProjectFilePath()), TEXT("Intermediate/Improbable/Json")));
 
 	TArray<FString> GeneratedSchemaFiles;
@@ -464,7 +464,7 @@ bool SpatialGDKGenerateInteropCode()
 	for(const FString& Component : GeneratedSchemaFiles)
 	{
 		FString ComponentHeader = Component.Replace(TEXT(".schema"), TEXT(".h"));
-		ComponentHeader.InsertAt(0, TEXT("improbable/unreal/generated"));
+		ComponentHeader.InsertAt(0, TEXT("improbable/unreal/generated/"));
 
 		ComponentHeaders.Add(ComponentHeader);
 	}
@@ -472,7 +472,7 @@ bool SpatialGDKGenerateInteropCode()
 	for(const FString& Component : CoreSchemaFiles)
 	{
 		FString ComponentHeader = Component.Replace(TEXT(".schema"), TEXT(".h"));
-		ComponentHeader.InsertAt(0, TEXT("improbable/unreal/gdk"));
+		ComponentHeader.InsertAt(0, TEXT("improbable/unreal/gdk/"));
 
 		ComponentHeaders.Add(ComponentHeader);
 	}
@@ -507,7 +507,7 @@ namespace unreal
 
 		if(i == AllSchemaComponents.Num() - 1)
 		{
-			Writer.Printf("%s>", *Component);
+			Writer.Printf("%s>;", *Component);
 			break;
 		}
 
@@ -522,7 +522,7 @@ namespace unreal
 
 	Writer.WriteToFile(TEXT("woo.abc"));
 
-	Writer.WriteToFile(FString::Printf(TEXT("%s%s.h"), *CombinedForwardingCodePath, TEXT("SpatialComponents")));
+	Writer.WriteToFile(FString::Printf(TEXT("%s%s.h"), *CppOutputPath, TEXT("/SpatialComponents")));
 
 	return true;
 }

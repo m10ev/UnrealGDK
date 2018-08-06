@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Engine/PackageMapClient.h"
-#include "EntityId.h"
 #include "SpatialInterop.h"
 #include "SpatialUnrealObjectRef.h"
 
@@ -26,8 +25,8 @@ class SPATIALGDK_API USpatialPackageMapClient : public UPackageMapClient
 {
 	GENERATED_BODY()		
 public:
-	FNetworkGUID ResolveEntityActor(AActor* Actor, FEntityId EntityId, const SubobjectToOffsetMap& SubobjectToOffset);
-	void RemoveEntityActor(const FEntityId& EntityId);
+	FNetworkGUID ResolveEntityActor(AActor* Actor, worker::EntityId EntityId, const SubobjectToOffsetMap& SubobjectToOffset);
+	void RemoveEntityActor(const worker::EntityId& EntityId);
 
 	FNetworkGUID ResolveStablyNamedObject(const UObject* Object);
 	

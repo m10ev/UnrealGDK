@@ -3,14 +3,15 @@
 #include "SpatialGDKEditorGenerateSnapshot.h"
 #include "EntityBuilder.h"
 #include "SpatialConstants.h"
-#include "SpatialOSCommon.h"
 #include "SpatialGDKEditorUtils.h"
 #include "Runtime/Core/Public/HAL/PlatformFilemanager.h"
+#include "SpatialComponents.h"
 
 #include <improbable/standard_library.h>
 #include <improbable/unreal/gdk/level_data.h>
 #include <improbable/unreal/gdk/spawner.h>
 #include <improbable/unreal/gdk/global_state_manager.h>
+#include <improbable/unreal/gdk/unreal_metadata.h>
 #include <improbable/worker.h>
 
 DEFINE_LOG_CATEGORY(LogSpatialGDKSnapshot);

@@ -5,7 +5,6 @@
 #include <improbable/worker.h>
 
 #include "Engine/ActorChannel.h"
-#include "EntityId.h"
 #include "SpatialNetDriver.h"
 #include "SpatialTypeBinding.h"
 #include "improbable/standard_library.h"
@@ -26,12 +25,12 @@ public:
 	USpatialActorChannel(const FObjectInitializer & ObjectInitializer = FObjectInitializer::Get());
 
 	// SpatialOS Entity ID.
-	FORCEINLINE FEntityId GetEntityId() const
+	FORCEINLINE worker::EntityId GetEntityId() const
 	{
 		return ActorEntityId;
 	}
 
-	FORCEINLINE void SetEntityId(FEntityId ActorEntityId)
+	FORCEINLINE void SetEntityId(worker::EntityId ActorEntityId)
 	{
 		this->ActorEntityId = ActorEntityId;
 	}
@@ -39,7 +38,7 @@ public:
 	FORCEINLINE bool IsReadyForReplication() const
 	{
 		// Wait until we've reserved an entity ID.		
-		return ActorEntityId != FEntityId{};
+		return ActorEntityId != worker::EntityId{};
 	}
 
 	// Called on the client when receiving an update.
@@ -54,7 +53,7 @@ public:
 		if (View.Get())
 		{
 			// This will never fail because we can't have an actor channel without having checked out the entity.
-			auto& EntityAuthority = View->ComponentAuthority[ActorEntityId.ToSpatialEntityId()];
+			auto& EntityAuthority = View->ComponentAuthority[ActorEntityId];
 			auto ComponentIterator = EntityAuthority.find(ServerRPCsComponentId);
 			if (ComponentIterator != EntityAuthority.end())
 			{
@@ -124,7 +123,7 @@ private:
 
 	TWeakPtr<worker::Connection> WorkerConnection;
 	TWeakPtr<worker::View> WorkerView;
-	FEntityId ActorEntityId;
+	worker::EntityId ActorEntityId;
 
 	worker::Dispatcher::CallbackKey ReserveEntityCallback;
 	worker::Dispatcher::CallbackKey CreateEntityCallback;

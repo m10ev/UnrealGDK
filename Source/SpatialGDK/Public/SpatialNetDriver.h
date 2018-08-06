@@ -134,7 +134,7 @@ protected:
 #endif
 
 private:
-	FPlayerSpawnRequestSender PlayerSpawner;
+	//FPlayerSpawnRequestSender PlayerSpawner;
 
 	friend class USpatialNetConnection;
 };

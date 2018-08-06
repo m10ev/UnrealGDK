@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "SpatialGDKWorkerTypes.h"
+#include "improbable/worker.h"
 #include "improbable/standard_library.h"
 
 namespace improbable

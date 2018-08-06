@@ -4,12 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
-#include "improbable/worker.h"
-#include "improbable/view.h"
+#include <improbable/standard_library.h>
+#include <improbable/view.h>
+#include "SpatialNetDriver.h"
 
 #include "SpatialActorSpawner.generated.h"
 
 using namespace worker;
+using ComponentStorageBase = detail::ComponentStorageBase;
 
 UCLASS()
 class SPATIALGDK_API USpatialActorSpawner : public UObject
@@ -17,26 +19,44 @@ class SPATIALGDK_API USpatialActorSpawner : public UObject
 	GENERATED_BODY()
 	
 public:
+	void Init(USpatialNetDriver* NetDriver, UEntityRegistry* EntityRegistry);
 
-	void RegisterCallbacks(View view);
+	template <typename T>
+	void Accept();
+
+	void RegisterCallbacks();
 	
 	void AddEntity(const AddEntityOp& op);
 	void RemoveEntity(const RemoveEntityOp& op);
 	void HitCriticalSection(const CriticalSectionOp& op);
 	
-	void CreateActor();
-	void SpawnActor();
+	void CreateActor(const worker::EntityId& EntityId);
+	AActor* SpawnActor(improbable::PositionData* PositionComponent, UClass* ActorClass, bool bDeferred);
+	void DeleteActor(const worker::EntityId& EntityId);
 
-	void GetNativeEntityClass();
-	void SetupComponentInterest();
+	UClass* GetNativeEntityClass(improbable::MetadataData* MetadataComponent);
 
-private:
 	bool inCriticalSection;
 
+private:
 	TArray<AddEntityOp> PendingAddEntityOps;
 	TArray<RemoveEntityOp> PendingRemoveEntityOps;
+	TMap<EntityId, TArray<TSharedPtr<ComponentStorageBase>>> PendingAddComponentOps;
 
 	UEntityRegistry* EntityRegistry;
 
 	USpatialNetDriver* NetDriver;
+	TSharedPtr<Connection> Connection;
+	TSharedPtr<View> View;
+
+	template <typename Metaclass>
+	typename Metaclass::Data* GetComponentDataFromView(const worker::EntityId& EntityId)
+	{
+		auto EntityIterator = View->Entities.find(EntityId);
+		if (EntityIterator == View->Entities.end())
+		{
+			return nullptr;
+		}
+		return EntityIterator->second.Get<Metaclass>().data();
+	}
 };

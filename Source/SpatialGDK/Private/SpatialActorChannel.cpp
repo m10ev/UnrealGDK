@@ -10,7 +10,6 @@
 #include "SpatialInterop.h"
 #include "SpatialNetConnection.h"
 #include "SpatialNetDriver.h"
-#include "SpatialOS.h"
 #include "SpatialPackageMapClient.h"
 #include "SpatialTypeBinding.h"
 
@@ -69,8 +68,8 @@ void USpatialActorChannel::Init(UNetConnection* InConnection, int32 ChannelIndex
 	SpatialNetDriver = Cast<USpatialNetDriver>(Connection->Driver);
 	check(SpatialNetDriver);
 
-	WorkerView = SpatialNetDriver->GetSpatialOS()->GetView();
-	WorkerConnection = SpatialNetDriver->GetSpatialOS()->GetConnection();
+	//WorkerView = SpatialNetDriver->GetSpatialOS()->GetView();
+	//WorkerConnection = SpatialNetDriver->GetSpatialOS()->GetConnection();
 
 	BindToSpatialView();
 }
@@ -122,10 +121,10 @@ void USpatialActorChannel::DeleteEntityIfAuthoritative()
 	if (PinnedView.IsValid())
 	{
 		bHasAuthority = Interop->IsAuthoritativeDestructionAllowed()
-			&& PinnedView->GetAuthority<improbable::Position>(ActorEntityId.ToSpatialEntityId()) == worker::Authority::kAuthoritative;
+			&& PinnedView->GetAuthority<improbable::Position>(ActorEntityId) == worker::Authority::kAuthoritative;
 	}
 
-	UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Delete Entity request on %d. Has authority: %d "), ActorEntityId.ToSpatialEntityId(), bHasAuthority);
+	UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Delete Entity request on %d. Has authority: %d "), ActorEntityId, bHasAuthority);
 
 	// If we have authority and aren't trying to delete a critical entity, delete it
 	if (bHasAuthority && !IsCriticalEntity())
@@ -137,7 +136,7 @@ void USpatialActorChannel::DeleteEntityIfAuthoritative()
 bool USpatialActorChannel::IsCriticalEntity()
 {
 	// Don't delete if the actor is the spawner
-	if (ActorEntityId.ToSpatialEntityId() == SpatialConstants::EntityIds::SPAWNER_ENTITY_ID)
+	if (ActorEntityId == SpatialConstants::EntityIds::SPAWNER_ENTITY_ID)
 	{
 		return true;
 	}
@@ -152,7 +151,7 @@ bool USpatialActorChannel::IsCriticalEntity()
 
 	for(const auto& Pair : *SingletonNameToEntityId)
 	{
-		if (Pair.second == ActorEntityId.ToSpatialEntityId())
+		if (Pair.second == ActorEntityId)
 		{
 			return true;
 		}
@@ -168,7 +167,7 @@ bool USpatialActorChannel::CleanUp(const bool bForDestroy)
 #if WITH_EDITOR
 	if (SpatialNetDriver->IsServer() &&
 		SpatialNetDriver->GetWorld()->WorldType == EWorldType::PIE &&
-		SpatialNetDriver->GetEntityRegistry()->GetActorFromEntityId(ActorEntityId.ToSpatialEntityId()))
+		SpatialNetDriver->GetEntityRegistry()->GetActorFromEntityId(ActorEntityId))
 	{
 		// If we're running in PIE, as a server worker, and the entity hasn't already been cleaned up, delete it on shutdown.
 		DeleteEntityIfAuthoritative();
@@ -531,7 +530,7 @@ void USpatialActorChannel::SetChannelActor(AActor* InActor)
 
 	// Get the entity ID from the entity registry (or return 0 if it doesn't exist).
 	check(SpatialNetDriver->GetEntityRegistry());
-	ActorEntityId = SpatialNetDriver->GetEntityRegistry()->GetEntityIdFromActor(InActor).ToSpatialEntityId();
+	ActorEntityId = SpatialNetDriver->GetEntityRegistry()->GetEntityIdFromActor(InActor);
 
 	// If the entity registry has no entry for this actor, this means we need to create it.
 	if (ActorEntityId == 0)
@@ -553,10 +552,10 @@ void USpatialActorChannel::SetChannelActor(AActor* InActor)
 	}
 	else
 	{
-		UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Opened channel for actor %s with existing entity ID %lld."), *InActor->GetName(), ActorEntityId.ToSpatialEntityId());
+		UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Opened channel for actor %s with existing entity ID %lld."), *InActor->GetName(), ActorEntityId);
 
 		// Inform USpatialInterop of this new actor channel/entity pairing
-		SpatialNetDriver->GetSpatialInterop()->AddActorChannel(ActorEntityId.ToSpatialEntityId(), this);
+		SpatialNetDriver->GetSpatialInterop()->AddActorChannel(ActorEntityId, this);
 	}
 }
 
@@ -607,7 +606,7 @@ void USpatialActorChannel::OnReserveEntityIdResponse(const worker::ReserveEntity
 	USpatialInterop* Interop = SpatialNetDriver->GetSpatialInterop();
 
 	// Inform USpatialInterop of this new actor channel/entity pairing
-	Interop->AddActorChannel(ActorEntityId.ToSpatialEntityId(), this);
+	Interop->AddActorChannel(ActorEntityId, this);
 
 	// If a Singleton was created, update the GSM with the proper Id.
 	if (Interop->IsSingletonClass(Actor->GetClass()))
@@ -627,7 +626,7 @@ void USpatialActorChannel::OnCreateEntityResponse(const worker::CreateEntityResp
 		UnbindFromSpatialView();
 		return;
 	}
-	UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Created entity (%lld) for: %s. Request id: %d"), ActorEntityId.ToSpatialEntityId(), *Actor->GetName(), ReserveEntityIdRequestId.Id);
+	UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Created entity (%lld) for: %s. Request id: %d"), ActorEntityId, *Actor->GetName(), ReserveEntityIdRequestId.Id);
 
 	auto PinnedView = WorkerView.Pin();
 	if (PinnedView.IsValid())
@@ -635,7 +634,7 @@ void USpatialActorChannel::OnCreateEntityResponse(const worker::CreateEntityResp
 		PinnedView->Remove(CreateEntityCallback);
 	}
 
-	UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Received create entity response op for %lld"), ActorEntityId.ToSpatialEntityId());
+	UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Received create entity response op for %lld"), ActorEntityId);
 }
 
 void USpatialActorChannel::UpdateSpatialPosition()

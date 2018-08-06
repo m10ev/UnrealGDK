@@ -552,7 +552,7 @@ void GenerateTypeBindingHeader(FCodeWriter& HeaderWriter, FString SchemaFilename
 		void UnbindFromView() override;
 
 		worker::Entity CreateActorEntity(const FString& ClientWorkerId, const FVector& Position, const FString& Metadata, const FPropertyChangeState& InitialChanges, USpatialActorChannel* Channel) const override;
-		void SendComponentUpdates(const FPropertyChangeState& Changes, USpatialActorChannel* Channel, const FEntityId& EntityId) const override;
+		void SendComponentUpdates(const FPropertyChangeState& Changes, USpatialActorChannel* Channel, const worker::EntityId& EntityId) const override;
 		void SendRPCCommand(UObject* TargetObject, const UFunction* const Function, void* Parameters) override;
 
 		void ReceiveAddComponent(USpatialActorChannel* Channel, UAddComponentOpWrapperBase* AddComponentOp) const override;
@@ -1232,7 +1232,7 @@ void GenerateBody_SpatialComponents(FCodeWriter& SourceWriter, UClass* Class, TA
 void GenerateFunction_SendComponentUpdates(FCodeWriter& SourceWriter, UClass* Class)
 {
 	SourceWriter.BeginFunction(
-		{"void", "SendComponentUpdates(const FPropertyChangeState& Changes, USpatialActorChannel* Channel, const FEntityId& EntityId) const"},
+		{"void", "SendComponentUpdates(const FPropertyChangeState& Changes, USpatialActorChannel* Channel, const worker::EntityId& EntityId) const"},
 		TypeBindingName(Class));
 
 	SourceWriter.Print("// Build SpatialOS updates.");
@@ -1263,14 +1263,14 @@ void GenerateFunction_SendComponentUpdates(FCodeWriter& SourceWriter, UClass* Cl
 	{
 		SourceWriter.Printf("if (b%sUpdateChanged)", *GetReplicatedPropertyGroupName(Group));
 		SourceWriter.BeginScope();
-		SourceWriter.Printf("Connection->SendComponentUpdate<%s>(EntityId.ToSpatialEntityId(), %sUpdate);",
+		SourceWriter.Printf("Connection->SendComponentUpdate<%s>(EntityId, %sUpdate);",
 			*SchemaReplicatedDataName(Group, Class, true),
 			*GetReplicatedPropertyGroupName(Group));
 		SourceWriter.End();
 	}
 	SourceWriter.Printf("if (bHandoverDataUpdateChanged)");
 	SourceWriter.BeginScope();
-	SourceWriter.Printf("Connection->SendComponentUpdate<%s>(EntityId.ToSpatialEntityId(), HandoverDataUpdate);",
+	SourceWriter.Printf("Connection->SendComponentUpdate<%s>(EntityId, HandoverDataUpdate);",
 		*SchemaHandoverDataName(Class, true));
 	SourceWriter.End();
 
@@ -1397,7 +1397,7 @@ void GenerateFunction_BuildSpatialComponentUpdate(FCodeWriter& SourceWriter, UCl
 		UE_LOG(LogSpatialGDKInterop, Verbose, TEXT("%s: Sending property update. actor %s (%lld), property %s (handle %d)"),
 			*Interop->GetSpatialOS()->GetWorkerId(),
 			*Channel->Actor->GetName(),
-			Channel->GetEntityId().ToSpatialEntityId(),
+			Channel->GetEntityId(),
 			*Cmd.Property->GetName(),
 			HandleIterator.Handle);)""");
 
@@ -1437,7 +1437,7 @@ void GenerateFunction_BuildSpatialComponentUpdate(FCodeWriter& SourceWriter, UCl
 			UE_LOG(LogSpatialGDKInterop, Verbose, TEXT("%s: Sending handover property update. actor %s (%lld), property %s (handle %d)"),
 				*Interop->GetSpatialOS()->GetWorkerId(),
 				*Channel->Actor->GetName(),
-				Channel->GetEntityId().ToSpatialEntityId(),
+				Channel->GetEntityId(),
 				*PropertyMapData.Property->GetName(),
 				ChangedHandle);
 			ServerSendUpdate_Handover(Data, ChangedHandle, PropertyMapData.Property, Channel, HandoverDataUpdate);
@@ -1778,7 +1778,7 @@ void GenerateBody_ReceiveUpdate_RepDataProperty(FCodeWriter& SourceWriter, uint1
 					*Interop->GetSpatialOS()->GetWorkerId(),
 					*ObjectRefToString(ObjectRef),
 					*ActorChannel->Actor->GetName(),
-					ActorChannel->GetEntityId().ToSpatialEntityId(),
+					ActorChannel->GetEntityId(),
 					*RepData->Property->GetName(),
 					Handle);)""");
 			SourceWriter.Printf("%s = nullptr;", *PropertyValue);
@@ -1790,7 +1790,7 @@ void GenerateBody_ReceiveUpdate_RepDataProperty(FCodeWriter& SourceWriter, uint1
 					*Interop->GetSpatialOS()->GetWorkerId(),
 					*ObjectRefToString(ObjectRef),
 					*ActorChannel->Actor->GetName(),
-					ActorChannel->GetEntityId().ToSpatialEntityId(),
+					ActorChannel->GetEntityId(),
 					*RepData->Property->GetName(),
 					Handle);)""");
 			SourceWriter.Printf("// A legal static object reference should never be unresolved.");
@@ -1828,7 +1828,7 @@ void GenerateBody_ReceiveUpdate_RepDataProperty(FCodeWriter& SourceWriter, uint1
 		UE_LOG(LogSpatialGDKInterop, Verbose, TEXT("%s: Received replicated property update. actor %s (%lld), property %s (handle %d)"),
 			*Interop->GetSpatialOS()->GetWorkerId(),
 			*ActorChannel->Actor->GetName(),
-			ActorChannel->GetEntityId().ToSpatialEntityId(),
+			ActorChannel->GetEntityId(),
 			*RepData->Property->GetName(),
 			Handle);)""");
 
@@ -1899,7 +1899,7 @@ void GenerateFunction_ReceiveUpdate_HandoverData(FCodeWriter& SourceWriter, UCla
 						*Interop->GetSpatialOS()->GetWorkerId(),
 						*ObjectRefToString(ObjectRef),
 						*ActorChannel->Actor->GetName(),
-						ActorChannel->GetEntityId().ToSpatialEntityId(),
+						ActorChannel->GetEntityId(),
 						*HandoverData->Property->GetName(),
 						Handle);)""");
 				SourceWriter.Print("bWriteObjectProperty = false;");
@@ -1921,7 +1921,7 @@ void GenerateFunction_ReceiveUpdate_HandoverData(FCodeWriter& SourceWriter, UCla
 				UE_LOG(LogSpatialGDKInterop, Verbose, TEXT("%s: Received handover property update. actor %s (%lld), property %s (handle %d)"),
 					*Interop->GetSpatialOS()->GetWorkerId(),
 					*ActorChannel->Actor->GetName(),
-					ActorChannel->GetEntityId().ToSpatialEntityId(),
+					ActorChannel->GetEntityId(),
 					*HandoverData->Property->GetName(),
 					Handle);)""");
 

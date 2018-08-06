@@ -19,8 +19,7 @@ public class SpatialGDK : ModuleRules
             {
                 "SpatialGDK/Public",
                 "SpatialGDK/Public/WorkerSdk",
-                "SpatialGDK/Generated/Cpp",
-                "SpatialGDK/Generated/UClasses",
+                "SpatialGDK/Generated",
                 "SpatialGDK/Legacy",
                 "SpatialGDK/Legacy/Deprecated"
             });

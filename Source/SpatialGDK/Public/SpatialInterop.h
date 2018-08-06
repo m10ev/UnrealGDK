@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include "AddComponentOpWrapperBase.h"
 #include "ComponentIdentifier.h"
 #include "CoreMinimal.h"
 #include "SpatialConstants.h"
@@ -165,12 +164,12 @@ public:
 
 	// Sending component updates and RPCs.
 	worker::RequestId<worker::CreateEntityRequest> SendCreateEntityRequest(USpatialActorChannel* Channel, const FVector& Location, const FString& PlayerWorkerId, const TArray<uint16>& RepChanged, const TArray<uint16>& HandoverChanged);
-	worker::RequestId<worker::DeleteEntityRequest> SendDeleteEntityRequest(const FEntityId& EntityId);
-	void SendSpatialPositionUpdate(const FEntityId& EntityId, const FVector& Location);
+	worker::RequestId<worker::DeleteEntityRequest> SendDeleteEntityRequest(const worker::EntityId& EntityId);
+	void SendSpatialPositionUpdate(const worker::EntityId& EntityId, const FVector& Location);
 	void SendSpatialUpdate(USpatialActorChannel* Channel, const TArray<uint16>& RepChanged, const TArray<uint16>& HandoverChanged);
 	void SendSpatialUpdateSubobject(USpatialActorChannel* Channel, UObject* Subobject, FObjectReplicator* replicator, const TArray<uint16>& RepChanged, const TArray<uint16>& HandoverChanged);
 	void InvokeRPC(UObject* TargetObject, const UFunction* const Function, void* Parameters);
-	void ReceiveAddComponent(USpatialActorChannel* Channel, UAddComponentOpWrapperBase* AddComponentOp);
+	void ReceiveAddComponent(USpatialActorChannel* Channel, worker::detail::ComponentStorageBase* Component);
 
 	// Called by USpatialPackageMapClient when a UObject is "resolved" i.e. has a unreal object ref.
 	// This will dequeue pending object ref updates and RPCs which depend on this UObject existing in the package map.
@@ -183,21 +182,21 @@ public:
 	void StopIgnoringAuthoritativeDestruction() { bAuthoritativeDestruction = true; }
 
 	// Called by USpatialInteropPipelineBlock when an actor channel is opened on the client.
-	void AddActorChannel(const FEntityId& EntityId, USpatialActorChannel* Channel);
-	void RemoveActorChannel(const FEntityId& EntityId);
-	void DeleteEntity(const FEntityId& EntityId);
+	void AddActorChannel(const worker::EntityId& EntityId, USpatialActorChannel* Channel);
+	void RemoveActorChannel(const worker::EntityId& EntityId);
+	void DeleteEntity(const worker::EntityId& EntityId);
 
 	// Modifies component interest according to the updates this actor needs from SpatialOS.
 	// Called by USpatialInteropPipelineBlock after an actor has had its components initialized with values from SpatialOS.
-	void SendComponentInterests(USpatialActorChannel* ActorChannel, const FEntityId& EntityId);
+	void SendComponentInterests(USpatialActorChannel* ActorChannel, const worker::EntityId& EntityId);
 
 	// Used by generated type bindings to map an entity ID to its actor channel.
-	USpatialActorChannel* GetActorChannelByEntityId(const FEntityId& EntityId) const;
+	USpatialActorChannel* GetActorChannelByEntityId(const worker::EntityId& EntityId) const;
 
 	// RPC handlers. Used by generated type bindings.
 	void InvokeRPCSendHandler_Internal(FRPCCommandRequestFunc Function, bool bReliable);
 	void InvokeRPCReceiveHandler_Internal(FRPCCommandResponseFunc Function);
-	void HandleCommandResponse_Internal(const FString& RPCName, FUntypedRequestId RequestId, const FEntityId& EntityId, const worker::StatusCode& StatusCode, const FString& Message);
+	void HandleCommandResponse_Internal(const FString& RPCName, FUntypedRequestId RequestId, const worker::EntityId& EntityId, const worker::StatusCode& StatusCode, const FString& Message);
 
 	// Used to queue incoming/outgoing object updates/RPCs. Used by generated type bindings.
 	void QueueOutgoingObjectRepUpdate_Internal(const UObject* UnresolvedObject, USpatialActorChannel* DependentChannel, uint16 Handle);
@@ -211,7 +210,7 @@ public:
 	void QueueOutgoingArrayRepUpdate_Internal(const TSet<const UObject*>& UnresolvedObjects, USpatialActorChannel* DependentChannel, uint16 Handle);
 
 	// Update GlobalStateManager when EntityId is reserved
-	void UpdateGlobalStateManager(const FString& ClassName, const FEntityId& SingletonEntityId);
+	void UpdateGlobalStateManager(const FString& ClassName, const worker::EntityId& SingletonEntityId);
 	// Handle GSM checkout
 	void LinkExistingSingletonActors(const NameToEntityIdMap& SingletonNameToEntityId);
 	// Handle GSM Authority received
@@ -248,7 +247,7 @@ private:
 	TMap<UClass*, USpatialTypeBinding*> TypeBindings;
 
 	// A map from Entity ID to actor channel.
-	TMap<FEntityId, USpatialActorChannel*> EntityToActorChannel;
+	TMap<worker::EntityId, USpatialActorChannel*> EntityToActorChannel;
 
 	// Outgoing RPCs (for retry logic).
 	TMap<FUntypedRequestId, TSharedPtr<FOutgoingReliableRPC>> OutgoingReliableRPCs;
