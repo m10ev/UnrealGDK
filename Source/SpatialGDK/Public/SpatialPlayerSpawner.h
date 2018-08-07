@@ -5,11 +5,12 @@
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
 #include "SpatialNetDriver.h"
+#include <improbable/worker.h>
+#include "SpatialGDK/Generated/improbable/unreal/gdk/spawner.h"
 #include "SpatialPlayerSpawner.generated.h"
 
-/**
- * 
- */
+DECLARE_LOG_CATEGORY_EXTERN(LogSpatialGDKPlayerSpawner, Log, All);
+
 UCLASS()
 class SPATIALGDK_API USpatialPlayerSpawner : public UObject
 {
@@ -17,14 +18,14 @@ class SPATIALGDK_API USpatialPlayerSpawner : public UObject
 	
 public:
 
-	void Init();
+	void Init(USpatialNetDriver* NetDriver, FTimerManager* TimerManager);
 
 	// Server
-	void ReceivePlayerSpawnRequest(const CommandRequestOp<improbable::unreal::PlayerSpawner::Commands::SpawnPlayer>& op);
+	void ReceivePlayerSpawnRequest(const worker::CommandRequestOp<improbable::unreal::PlayerSpawner::Commands::SpawnPlayer>& op);
 
 	// Client
 	void SendPlayerSpawnRequest();
-	void ReceivePlayerSpawnResponse(const CommandResponseOp<improbable::unreal::PlayerSpawner::Commands::SpawnPlayer>& op);
+	void ReceivePlayerSpawnResponse(const worker::CommandResponseOp<improbable::unreal::PlayerSpawner::Commands::SpawnPlayer>& op);
 
 private:
 	USpatialNetDriver* NetDriver;

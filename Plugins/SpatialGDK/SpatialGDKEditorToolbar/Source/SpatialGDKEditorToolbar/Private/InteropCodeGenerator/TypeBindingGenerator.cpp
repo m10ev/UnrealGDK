@@ -530,7 +530,6 @@ void GenerateTypeBindingHeader(FCodeWriter& HeaderWriter, FString SchemaFilename
 		#include <improbable/unreal/gdk/core_types.h>
 		#include <improbable/unreal/gdk/unreal_metadata.h>
 		#include <improbable/unreal/generated/%s.h>
-		#include "ScopedViewCallbacks.h"
 		#include "SpatialTypeBinding.h"
 		#include "SpatialTypeBinding_%s.generated.h")""", *SchemaFilename, *Class->GetName());
 	HeaderWriter.PrintNewLine();
@@ -549,13 +548,12 @@ void GenerateTypeBindingHeader(FCodeWriter& HeaderWriter, FString SchemaFilename
 
 		void Init(USpatialInterop* InInterop, USpatialPackageMapClient* InPackageMap) override;
 		void BindToView(bool bIsClient) override;
-		void UnbindFromView() override;
 
 		worker::Entity CreateActorEntity(const FString& ClientWorkerId, const FVector& Position, const FString& Metadata, const FPropertyChangeState& InitialChanges, USpatialActorChannel* Channel) const override;
 		void SendComponentUpdates(const FPropertyChangeState& Changes, USpatialActorChannel* Channel, const worker::EntityId& EntityId) const override;
 		void SendRPCCommand(UObject* TargetObject, const UFunction* const Function, void* Parameters) override;
 
-		void ReceiveAddComponent(USpatialActorChannel* Channel, UAddComponentOpWrapperBase* AddComponentOp) const override;
+		void ReceiveAddComponent(USpatialActorChannel* Channel, worker::detail::ComponentStorageBase* Component) const override;
 		worker::Map<worker::ComponentId, worker::InterestOverride> GetInterestOverrideMap(bool bIsClient, bool bAutonomousProxy) const override;)""");
 
 	HeaderWriter.PrintNewLine();
@@ -579,8 +577,6 @@ void GenerateTypeBindingHeader(FCodeWriter& HeaderWriter, FString SchemaFilename
 	HeaderWriter.PrintNewLine();
 
 	HeaderWriter.Outdent().Print("private:").Indent();
-	HeaderWriter.Print("improbable::unreal::callbacks::FScopedViewCallbacks ViewCallbacks;");
-	HeaderWriter.PrintNewLine();
 	HeaderWriter.Printf(R"""(
 		// RPC to sender map.
 		using FRPCSender = void (%s::*)(worker::Connection* const, void*, UObject*);
@@ -683,7 +679,6 @@ void GenerateTypeBindingSource(FCodeWriter& SourceWriter, FString SchemaFilename
 		#include "GameFramework/PlayerState.h"
 		#include "NetworkGuid.h"
 
-		#include "SpatialOS.h"
 		#include "EntityBuilder.h"
 
 		#include "SpatialConstants.h"
@@ -705,24 +700,18 @@ void GenerateTypeBindingSource(FCodeWriter& SourceWriter, FString SchemaFilename
 		}
 	}
 
-	SourceWriter.PrintNewLine();
-	for (EReplicatedPropertyGroup Group : GetAllReplicatedPropertyGroups())
-	{
-		SourceWriter.Printf("#include \"%sAddComponentOp.h\"", *SchemaReplicatedDataName(Group, Class));
-	}
-	SourceWriter.Printf("#include \"%sAddComponentOp.h\"", *SchemaHandoverDataName(Class));
+	//SourceWriter.Printf("#include <improbable/unreal/generated/%s.h>", *Class->GetName());
 
 	TArray<UClass*> Components = GetAllSupportedComponents(Class);
-
 	for (UClass* ComponentClass : Components)
 	{
 		SourceWriter.PrintNewLine();
 		SourceWriter.Printf("#include \"SpatialTypeBinding_%s.h\"", *ComponentClass->GetName());
-		for (EReplicatedPropertyGroup Group : GetAllReplicatedPropertyGroups())
-		{
-			SourceWriter.Printf("#include \"%sAddComponentOp.h\"", *SchemaReplicatedDataName(Group, ComponentClass));
-		}
-		SourceWriter.Printf("#include \"%sAddComponentOp.h\"", *SchemaHandoverDataName(ComponentClass));
+		//for (EReplicatedPropertyGroup Group : GetAllReplicatedPropertyGroups())
+		//{
+		//	SourceWriter.Printf("#include \"%sAddComponentOp.h\"", *SchemaReplicatedDataName(Group, ComponentClass));
+		//}
+		//SourceWriter.Printf("#include \"%sAddComponentOp.h\"", *SchemaHandoverDataName(ComponentClass));
 	}
 
 	// Get replicated data and RPCs.
@@ -746,9 +735,6 @@ void GenerateTypeBindingSource(FCodeWriter& SourceWriter, FString SchemaFilename
 
 	SourceWriter.PrintNewLine();
 	GenerateFunction_BindToView(SourceWriter, Class, RPCsByType);
-
-	SourceWriter.PrintNewLine();
-	GenerateFunction_UnbindFromView(SourceWriter, Class);
 
 	SourceWriter.PrintNewLine();
 	GenerateFunction_CreateActorEntity(SourceWriter, Class, Components);
@@ -958,14 +944,11 @@ void GenerateFunction_BindToView(FCodeWriter& SourceWriter, UClass* Class, const
 {
 	SourceWriter.BeginFunction({"void", "BindToView(bool bIsClient)"}, TypeBindingName(Class));
 
-	SourceWriter.Print("TSharedPtr<worker::View> View = Interop->GetSpatialOS()->GetView().Pin();");
-	SourceWriter.Print("ViewCallbacks.Init(View);");
-	SourceWriter.PrintNewLine();
 	SourceWriter.Print("if (Interop->GetNetDriver()->GetNetMode() == NM_Client)");
 	SourceWriter.BeginScope();
 	for (EReplicatedPropertyGroup Group : GetAllReplicatedPropertyGroups())
 	{
-		SourceWriter.Printf("ViewCallbacks.Add(View->OnComponentUpdate<%s>([this](",
+		SourceWriter.Printf("View->OnComponentUpdate<%s>([this](",
 			*SchemaReplicatedDataName(Group, Class, true));
 		SourceWriter.Indent();
 		SourceWriter.Printf("const worker::ComponentUpdateOp<%s>& Op)", *SchemaReplicatedDataName(Group, Class, true));
@@ -974,7 +957,7 @@ void GenerateFunction_BindToView(FCodeWriter& SourceWriter, UClass* Class, const
 		SourceWriter.Indent();
 		SourceWriter.Printf(R"""(
 			// TODO: Remove this check once we can disable component update short circuiting. This will be exposed in 14.0. See TIG-137.
-			if (HasComponentAuthority(Interop->GetSpatialOS()->GetView(), Op.EntityId, %s::ComponentId))
+			if (HasComponentAuthority(Op.EntityId, %s::ComponentId))
 			{
 				return;
 			})""", *SchemaReplicatedDataName(Group, Class, true));
@@ -984,18 +967,18 @@ void GenerateFunction_BindToView(FCodeWriter& SourceWriter, UClass* Class, const
 			ReceiveUpdate_%s(ActorChannel, Op.Update);)""",
 			*GetReplicatedPropertyGroupName(Group));
 		SourceWriter.Outdent();
-		SourceWriter.Print("}));");
+		SourceWriter.Print("});");
 	}
 	SourceWriter.Printf("if (!bIsClient)");
 	SourceWriter.BeginScope();
-	SourceWriter.Printf("ViewCallbacks.Add(View->OnComponentUpdate<%s>([this](", *SchemaHandoverDataName(Class, true));
+	SourceWriter.Printf("View->OnComponentUpdate<%s>([this](", *SchemaHandoverDataName(Class, true));
 	SourceWriter.Indent();
 	SourceWriter.Printf("const worker::ComponentUpdateOp<%s>& Op)", *SchemaHandoverDataName(Class, true));
 	SourceWriter.Outdent();
 	SourceWriter.BeginScope();
 	SourceWriter.Printf(R"""(
 		// TODO: Remove this check once we can disable component update short circuiting. This will be exposed in 14.0. See TIG-137.
-		if (HasComponentAuthority(Interop->GetSpatialOS()->GetView(), Op.EntityId, %s::ComponentId))
+		if (HasComponentAuthority(Op.EntityId, %s::ComponentId))
 		{
 			return;
 		})""", *SchemaHandoverDataName(Class, true));
@@ -1004,12 +987,12 @@ void GenerateFunction_BindToView(FCodeWriter& SourceWriter, UClass* Class, const
 		check(ActorChannel);
 		ReceiveUpdate_Handover(ActorChannel, Op.Update);)""");
 	SourceWriter.Outdent();
-	SourceWriter.Print("}));");
+	SourceWriter.Print("});");
 	SourceWriter.End();
 	SourceWriter.End();
 
 	// Multicast RPCs
-	SourceWriter.Printf("ViewCallbacks.Add(View->OnComponentUpdate<%s>([this](",
+	SourceWriter.Printf("View->OnComponentUpdate<%s>([this](",
 		*SchemaRPCComponentName(RPC_NetMulticast, Class, true));
 	SourceWriter.Indent();
 	SourceWriter.Printf("const worker::ComponentUpdateOp<%s>& Op)",
@@ -1019,7 +1002,7 @@ void GenerateFunction_BindToView(FCodeWriter& SourceWriter, UClass* Class, const
 	SourceWriter.Indent();
 	SourceWriter.Printf(R"""(
 		// TODO: Remove this check once we can disable component update short circuiting. This will be exposed in 14.0. See TIG-137.
-		if (HasComponentAuthority(Interop->GetSpatialOS()->GetView(), Op.EntityId, %s::ComponentId))
+		if (HasComponentAuthority(Op.EntityId, %s::ComponentId))
 		{
 			return;
 		})""",
@@ -1028,7 +1011,7 @@ void GenerateFunction_BindToView(FCodeWriter& SourceWriter, UClass* Class, const
 		ReceiveUpdate_NetMulticastRPCs(Op.EntityId, Op.Update);)""",
 		*GetRPCTypeName(RPC_NetMulticast));
 	SourceWriter.Outdent();
-	SourceWriter.Print("}));");
+	SourceWriter.Print("});");
 
 	for (auto Group : GetRPCTypes())
 	{
@@ -1047,7 +1030,7 @@ void GenerateFunction_BindToView(FCodeWriter& SourceWriter, UClass* Class, const
 				*SchemaRPCComponentName(Group, Class, true));
 			for (auto& RPC : RPCsByType[Group])
 			{
-				SourceWriter.Printf("ViewCallbacks.Add(View->OnCommandRequest<%sRPCCommandTypes::%s>(std::bind(&%s::%s_OnRPCPayload, this, std::placeholders::_1)));",
+				SourceWriter.Printf("View->OnCommandRequest<%sRPCCommandTypes::%s>(std::bind(&%s::%s_OnRPCPayload, this, std::placeholders::_1));",
 					*GetRPCTypeName(Group),
 					*CPPCommandClassName(Class, RPC->Function),
 					*TypeBindingName(Class),
@@ -1055,7 +1038,7 @@ void GenerateFunction_BindToView(FCodeWriter& SourceWriter, UClass* Class, const
 			}
 			for (auto& RPC : RPCsByType[Group])
 			{
-				SourceWriter.Printf("ViewCallbacks.Add(View->OnCommandResponse<%sRPCCommandTypes::%s>(std::bind(&%s::%s_OnCommandResponse, this, std::placeholders::_1)));",
+				SourceWriter.Printf("View->OnCommandResponse<%sRPCCommandTypes::%s>(std::bind(&%s::%s_OnCommandResponse, this, std::placeholders::_1));",
 					*GetRPCTypeName(Group),
 					*CPPCommandClassName(Class, RPC->Function),
 					*TypeBindingName(Class),
@@ -1064,13 +1047,6 @@ void GenerateFunction_BindToView(FCodeWriter& SourceWriter, UClass* Class, const
 		}
 	}
 
-	SourceWriter.End();
-}
-
-void GenerateFunction_UnbindFromView(FCodeWriter& SourceWriter, UClass* Class)
-{
-	SourceWriter.BeginFunction({"void", "UnbindFromView()"}, TypeBindingName(Class));
-	SourceWriter.Print("ViewCallbacks.Reset();");
 	SourceWriter.End();
 }
 
@@ -1258,7 +1234,7 @@ void GenerateFunction_SendComponentUpdates(FCodeWriter& SourceWriter, UClass* Cl
 
 	SourceWriter.PrintNewLine();
 	SourceWriter.Print("// Send SpatialOS updates if anything changed.");
-	SourceWriter.Print("TSharedPtr<worker::Connection> Connection = Interop->GetSpatialOS()->GetConnection().Pin();");
+	SourceWriter.Print("TSharedPtr<worker::Connection> Connection = Interop->GetNetDriver()->Connection;");
 	for (EReplicatedPropertyGroup Group : GetAllReplicatedPropertyGroups())
 	{
 		SourceWriter.Printf("if (b%sUpdateChanged)", *GetReplicatedPropertyGroupName(Group));
@@ -1283,7 +1259,7 @@ void GenerateFunction_SendRPCCommand(FCodeWriter& SourceWriter, UClass* Class)
 		{"void", "SendRPCCommand(UObject* TargetObject, const UFunction* const Function, void* Parameters)"},
 		TypeBindingName(Class));
 	SourceWriter.Print(R"""(
-		TSharedPtr<worker::Connection> Connection = Interop->GetSpatialOS()->GetConnection().Pin();
+		TSharedPtr<worker::Connection> Connection = Interop->GetNetDriver()->Connection;
 		auto SenderFuncIterator = RPCToSenderMap.Find(Function->GetFName());
 		if (SenderFuncIterator == nullptr)
 		{
@@ -1300,7 +1276,7 @@ void GenerateFunction_ReceiveAddComponent(FCodeWriter& SourceWriter, UClass* Cla
 	SourceWriter.BeginFunction(
 		{"void", "ReceiveAddComponent(USpatialActorChannel* Channel, UAddComponentOpWrapperBase* AddComponentOp) const"},
 		TypeBindingName(Class));
-	for (EReplicatedPropertyGroup Group : GetAllReplicatedPropertyGroups())
+	/*for (EReplicatedPropertyGroup Group : GetAllReplicatedPropertyGroups())
 	{
 		SourceWriter.Printf(R"""(
 			auto* %sAddOp = Cast<U%sAddComponentOp>(AddComponentOp);
@@ -1335,7 +1311,7 @@ void GenerateFunction_ReceiveAddComponent(FCodeWriter& SourceWriter, UClass* Cla
 		SourceWriter.Printf("USpatialTypeBinding_%s* %sTypeBinding = Cast<USpatialTypeBinding_%s>(Interop->GetTypeBindingByClass(%s::StaticClass()));",
 			*ClassName, *ClassName, *ClassName, *GetFullCPPName(ComponentClass));
 		SourceWriter.Printf("%sTypeBinding->ReceiveAddComponent(Channel, AddComponentOp);", *ClassName);
-	}
+	}*/
 
 	SourceWriter.End();
 }
@@ -1395,7 +1371,7 @@ void GenerateFunction_BuildSpatialComponentUpdate(FCodeWriter& SourceWriter, UCl
 		const FRepHandleData& PropertyMapData = RepPropertyMap[HandleIterator.Handle];
 		const uint8* Data = PropertyMapData.GetPropertyData(Changes.SourceData) + HandleIterator.ArrayOffset;
 		UE_LOG(LogSpatialGDKInterop, Verbose, TEXT("%s: Sending property update. actor %s (%lld), property %s (handle %d)"),
-			*Interop->GetSpatialOS()->GetWorkerId(),
+			Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 			*Channel->Actor->GetName(),
 			Channel->GetEntityId(),
 			*Cmd.Property->GetName(),
@@ -1435,7 +1411,7 @@ void GenerateFunction_BuildSpatialComponentUpdate(FCodeWriter& SourceWriter, UCl
 			const FHandoverHandleData& PropertyMapData = HandoverPropertyMap[ChangedHandle];
 			const uint8* Data = PropertyMapData.GetPropertyData(Changes.SourceData);
 			UE_LOG(LogSpatialGDKInterop, Verbose, TEXT("%s: Sending handover property update. actor %s (%lld), property %s (handle %d)"),
-				*Interop->GetSpatialOS()->GetWorkerId(),
+				Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 				*Channel->Actor->GetName(),
 				Channel->GetEntityId(),
 				*PropertyMapData.Property->GetName(),
@@ -1775,7 +1751,7 @@ void GenerateBody_ReceiveUpdate_RepDataProperty(FCodeWriter& SourceWriter, uint1
 				// Pre-alpha limitation: if a UObject* in an array property is unresolved, we currently don't have a way to update it once
 				// it is resolved. It will remain null and will only be updated when the server replicates this array again (when it changes).
 				UE_LOG(LogSpatialGDKInterop, Warning, TEXT("%s: Ignoring unresolved object property. Value: %s. actor %s (%lld), property %s (handle %d)"),
-					*Interop->GetSpatialOS()->GetWorkerId(),
+					Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 					*ObjectRefToString(ObjectRef),
 					*ActorChannel->Actor->GetName(),
 					ActorChannel->GetEntityId(),
@@ -1787,7 +1763,7 @@ void GenerateBody_ReceiveUpdate_RepDataProperty(FCodeWriter& SourceWriter, uint1
 		{
 			SourceWriter.Print(R"""(
 				UE_LOG(LogSpatialGDKInterop, Log, TEXT("%s: Received unresolved object property. Value: %s. actor %s (%lld), property %s (handle %d)"),
-					*Interop->GetSpatialOS()->GetWorkerId(),
+					Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 					*ObjectRefToString(ObjectRef),
 					*ActorChannel->Actor->GetName(),
 					ActorChannel->GetEntityId(),
@@ -1826,7 +1802,7 @@ void GenerateBody_ReceiveUpdate_RepDataProperty(FCodeWriter& SourceWriter, uint1
 
 	SourceWriter.Print(R"""(
 		UE_LOG(LogSpatialGDKInterop, Verbose, TEXT("%s: Received replicated property update. actor %s (%lld), property %s (handle %d)"),
-			*Interop->GetSpatialOS()->GetWorkerId(),
+			Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 			*ActorChannel->Actor->GetName(),
 			ActorChannel->GetEntityId(),
 			*RepData->Property->GetName(),
@@ -1896,7 +1872,7 @@ void GenerateFunction_ReceiveUpdate_HandoverData(FCodeWriter& SourceWriter, UCla
 			{
 				SourceWriter.Print(R"""(
 					UE_LOG(LogSpatialGDKInterop, Log, TEXT("%s: Received unresolved object property. Value: %s. actor %s (%lld), property %s (handle %d)"),
-						*Interop->GetSpatialOS()->GetWorkerId(),
+						Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 						*ObjectRefToString(ObjectRef),
 						*ActorChannel->Actor->GetName(),
 						ActorChannel->GetEntityId(),
@@ -1919,7 +1895,7 @@ void GenerateFunction_ReceiveUpdate_HandoverData(FCodeWriter& SourceWriter, UCla
 
 			SourceWriter.Print(R"""(
 				UE_LOG(LogSpatialGDKInterop, Verbose, TEXT("%s: Received handover property update. actor %s (%lld), property %s (handle %d)"),
-					*Interop->GetSpatialOS()->GetWorkerId(),
+					Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 					*ActorChannel->Actor->GetName(),
 					ActorChannel->GetEntityId(),
 					*HandoverData->Property->GetName(),
@@ -1996,7 +1972,7 @@ void GenerateFunction_SendRPC(FCodeWriter& SourceWriter, UClass* Class, const TS
 		improbable::unreal::UnrealObjectRef TargetObjectRef = PackageMap->GetUnrealObjectRefFromNetGUID(PackageMap->GetNetGUIDFromObject(TargetObject));
 		if (TargetObjectRef == SpatialConstants::UNRESOLVED_OBJECT_REF)
 		{
-			UE_LOG(LogSpatialGDKInterop, Log, TEXT("%%s: RPC %s queued. Target object is unresolved."), *Interop->GetSpatialOS()->GetWorkerId());
+			UE_LOG(LogSpatialGDKInterop, Log, TEXT("%%s: RPC %s queued. Target object is unresolved."), Interop->GetNetDriver()->Connection->GetWorkerId().c_str());
 			return {TargetObject};
 		})""", *RPC->Function->GetName());
 	SourceWriter.PrintNewLine();
@@ -2021,7 +1997,7 @@ void GenerateFunction_SendRPC(FCodeWriter& SourceWriter, UClass* Class, const TS
 			SourceWriter, SpatialValueSetter, Param->Property, PropertyValue,
 			[&SourceWriter, &RPC](const FString& PropertyValue)
 		{
-			SourceWriter.Printf("UE_LOG(LogSpatialGDKInterop, Log, TEXT(\"%%s: RPC %s queued. %s is unresolved.\"), *Interop->GetSpatialOS()->GetWorkerId());",
+			SourceWriter.Printf("UE_LOG(LogSpatialGDKInterop, Log, TEXT(\"%%s: RPC %s queued. %s is unresolved.\"), Interop->GetNetDriver()->Connection->GetWorkerId().c_str());",
 				*RPC->Function->GetName(),
 				*PropertyValue);
 			SourceWriter.Printf("return {Cast<UObject>(%s)};", *PropertyValue);
@@ -2058,7 +2034,7 @@ void GenerateFunction_SendRPC(FCodeWriter& SourceWriter, UClass* Class, const TS
 		// Send RPC
 		RPCPayload.set_target_subobject_offset(TargetObjectRef.offset());
 		UE_LOG(LogSpatialGDKInterop, Verbose, TEXT("%%s: Sending RPC: %s, target: %%s %%s"),
-			*Interop->GetSpatialOS()->GetWorkerId(),
+			Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 			*TargetObject->GetName(),
 			*ObjectRefToString(TargetObjectRef));
 		%s)""",
@@ -2110,7 +2086,7 @@ void GenerateFunction_OnRPCPayload(FCodeWriter& SourceWriter, UClass* Class, con
 		SourceWriter.Printf("checkf(%s.path().empty(), TEXT(\"A stably named object should not need resolution.\"));", *ObjectRef);
 		SourceWriter.Printf(R"""(
 			UE_LOG(LogSpatialGDKInterop, Log, TEXT("%%s: %s_OnRPCPayload: %s %%s is not resolved on this worker."),
-				*Interop->GetSpatialOS()->GetWorkerId(),
+				Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 				*ObjectRefToString(%s));
 			return {%s};)""",
 			*UnrealNameToCppName(RPC->Function->GetName()),
@@ -2135,7 +2111,7 @@ void GenerateFunction_OnRPCPayload(FCodeWriter& SourceWriter, UClass* Class, con
 	SourceWriter.Printf(R"""(
 		UObject* TargetObject = PackageMap->GetObjectFromNetGUID(TargetNetGUID, false);
 		checkf(TargetObject, TEXT("%%s: %s_OnRPCPayload: Object Ref %%s (NetGUID %%s) does not correspond to a UObject."),
-			*Interop->GetSpatialOS()->GetWorkerId(),
+			Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 			*ObjectRefToString(TargetObjectRef),
 			*TargetNetGUID.ToString());)""",
 		*RPC->Function->GetName());
@@ -2180,7 +2156,7 @@ void GenerateFunction_OnRPCPayload(FCodeWriter& SourceWriter, UClass* Class, con
 	SourceWriter.Print("// Call implementation.");
 	SourceWriter.Printf(R"""(
 				UE_LOG(LogSpatialGDKInterop, Verbose, TEXT("%%s: Received RPC: %s, target: %%s %%s"),
-					*Interop->GetSpatialOS()->GetWorkerId(),
+					Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 					*TargetObject->GetName(),
 					*ObjectRefToString(TargetObjectRef));)""",
 		*RPC->Function->GetName());
@@ -2194,7 +2170,7 @@ void GenerateFunction_OnRPCPayload(FCodeWriter& SourceWriter, UClass* Class, con
 		else
 		{
 			UE_LOG(LogSpatialGDKInterop, Error, TEXT("%%s: %s_OnRPCPayload: Function not found. Object: %%s, Function: %s."),
-				*Interop->GetSpatialOS()->GetWorkerId(),
+				Interop->GetNetDriver()->Connection->GetWorkerId().c_str(),
 				*TargetObject->GetFullName());
 		})""",
 		*RPC->Function->GetName(),
@@ -2206,7 +2182,7 @@ void GenerateFunction_OnRPCPayload(FCodeWriter& SourceWriter, UClass* Class, con
 	if (RPC->Type != RPC_NetMulticast)
 	{
 		SourceWriter.Print("// Send command response.");
-		SourceWriter.Print("TSharedPtr<worker::Connection> Connection = Interop->GetSpatialOS()->GetConnection().Pin();");
+		SourceWriter.Print("TSharedPtr<worker::Connection> Connection = Interop->GetNetDriver()->Connection;");
 		SourceWriter.Printf("Connection->SendCommandResponse<%s::Commands::%s>(Op.RequestId, {});",
 			*SchemaRPCComponentName(RPC->Type, Class, true),
 			*CPPCommandClassName(Class, RPC->Function));

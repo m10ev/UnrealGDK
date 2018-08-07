@@ -6,7 +6,6 @@
 #include "Net/RepLayout.h"
 #include "SpatialActorChannel.h"
 #include "SpatialNetDriver.h"
-#include "SpatialOS.h"
 
 class FSpatialConditionMapFilter
 {
@@ -22,13 +21,13 @@ public:
 		RepFlags.bRepPhysics = ActorChannel->Actor->ReplicatedMovement.bRepPhysics;
 
 #if 0
-		UE_LOG(LogTemp, Verbose, TEXT("CMF Actor %s (%lld) NetOwner %d Simulated %d RepPhysics %d Client %s"),
-			*ActorChannel->Actor->GetName(),
-			ActorChannel->GetEntityId().ToSpatialEntityId(),
-			RepFlags.bNetOwner,
-			RepFlags.bNetSimulated,
-			RepFlags.bRepPhysics,
-			*Cast<USpatialNetDriver>(ActorChannel->Connection->Driver)->GetSpatialOS()->GetWorkerId());
+		//UE_LOG(LogTemp, Verbose, TEXT("CMF Actor %s (%lld) NetOwner %d Simulated %d RepPhysics %d Client %s"),
+		//	*ActorChannel->Actor->GetName(),
+		//	ActorChannel->GetEntityId(),
+		//	RepFlags.bNetOwner,
+		//	RepFlags.bNetSimulated,
+		//	RepFlags.bRepPhysics,
+		//	*Cast<USpatialNetDriver>(ActorChannel->Connection->Driver)->GetSpatialOS()->GetWorkerId());
 #endif
 
 		// Build a ConditionMap. This code is taken directly from FRepLayout::RebuildConditionalProperties

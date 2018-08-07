@@ -16,6 +16,8 @@
 #include "SpatialNetConnection.h"
 #include "SpatialPackageMapClient.h"
 #include "SpatialPendingNetGame.h"
+#include "SpatialPlayerSpawner.h"
+#include "SpatialActorSpawner.h"
 
 #include "SpatialGDK/Generated/improbable/unreal/gdk/spawner.h"
 #include "SpatialGDK/Generated/SpatialComponents.h"
@@ -100,6 +102,7 @@ void USpatialNetDriver::OnMapLoaded(UWorld* LoadedWorld)
 	// Connect to SpatialOS.
 	//SpatialOSInstance->ApplyConfiguration(WorkerConfig);
 	//SpatialOSInstance->Connect();
+	Connect();
 
 	// Set up manager objects.
 	EntityRegistry = NewObject<UEntityRegistry>(this);
@@ -109,9 +112,39 @@ void USpatialNetDriver::OnMapLoaded(UWorld* LoadedWorld)
 void USpatialNetDriver::Connect()
 {
 	worker::ConnectionParameters Params;
-	// Set up params
+	const FString Hostname;
+	std::uint16_t Port;
+	const FString WorkerId;
 
-	//worker::Connection::ConnectAsync()
+	uint32_t TimeoutMillis;
+
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [&]() {
+		worker::Future<worker::Connection> ConnectionFuture = worker::Connection::ConnectAsync(improbable::unreal::Components{},
+			std::string(TCHAR_TO_UTF8(*Hostname)), Port, std::string(TCHAR_TO_UTF8(*WorkerId)), Params);
+
+		WaitForConnection(TimeoutMillis, std::move(ConnectionFuture));
+	});
+}
+
+void USpatialNetDriver::WaitForConnection(std::uint32_t TimeoutMillis, worker::Future<worker::Connection> ConnectionFuture)
+{
+	if(ConnectionFuture.Wait(TimeoutMillis))
+	{
+		Connection = MakeShared<worker::Connection>(ConnectionFuture.Get());
+
+		if(Connection->IsConnected())
+		{
+			AsyncTask(ENamedThreads::GameThread, [this](){ OnSpatialOSConnected(); });
+		}
+		else
+		{
+			AsyncTask(ENamedThreads::GameThread, [this](){ OnSpatialOSConnectFailed(TEXT("")); });
+		}
+	}
+	else
+	{
+		AsyncTask(ENamedThreads::GameThread, [this](){ OnSpatialOSConnectFailed(TEXT("Connection Timed Out")); });
+	}
 }
 
 void USpatialNetDriver::OnSpatialOSConnected()
@@ -121,6 +154,13 @@ void USpatialNetDriver::OnSpatialOSConnected()
 	//InteropPipelineBlock = NewObject<USpatialInteropPipelineBlock>();
 	//InteropPipelineBlock->Init(EntityRegistry, this, GetWorld());
 	//SpatialOSInstance->GetEntityPipeline()->AddBlock(InteropPipelineBlock);
+
+	PlayerSpawner = NewObject<USpatialPlayerSpawner>();
+	PlayerSpawner->Init(this, TimerManager);
+
+	ActorSpawner = NewObject<USpatialActorSpawner>();
+	ActorSpawner->Init(this, EntityRegistry);
+	ActorSpawner->RegisterCallbacks();
 
 	TArray<FString> BlueprintPaths;
 	BlueprintPaths.Add(TEXT(ENTITY_BLUEPRINTS_FOLDER));
@@ -138,6 +178,7 @@ void USpatialNetDriver::OnSpatialOSConnected()
 	{
 		// Send the player spawn commands with retries
 		//PlayerSpawner.RequestPlayer(SpatialOSInstance, TimerManager, DummyURL);
+		PlayerSpawner->SendPlayerSpawnRequest();
 	}
 	else
 	{
@@ -155,13 +196,8 @@ void USpatialNetDriver::OnSpatialOSConnected()
 		Connection->SetClientLoginState(EClientLoginState::Welcomed);
 	}
 
-	//Interop->Init(SpatialOSInstance, this, TimerManager);
+	Interop->Init(this, TimerManager);
 }
-
-//void USpatialNetDriver::SpawnPlayer()
-//{
-//
-//}
 
 void USpatialNetDriver::OnSpatialOSDisconnected(const FString& Reason)
 {
@@ -747,11 +783,10 @@ void USpatialNetDriver::TickDispatch(float DeltaTime)
 	// Not calling Super:: on purpose.
 	UNetDriver::TickDispatch(DeltaTime);
 
-	//if (SpatialOSInstance != nullptr && SpatialOSInstance->GetEntityPipeline() != nullptr)
-	//{
-	//	SpatialOSInstance->ProcessOps();
-	//	SpatialOSInstance->GetEntityPipeline()->ProcessOps(SpatialOSInstance->GetView(), SpatialOSInstance->GetConnection(), GetWorld());
-	//}
+	if(Connection.IsValid() && ActorSpawner != nullptr) // probably need a better condition?
+	{
+		View->Process(Connection->GetOpList(0));
+	}
 }
 
 void USpatialNetDriver::ProcessRemoteFunction(

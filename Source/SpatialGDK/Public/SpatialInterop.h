@@ -157,7 +157,7 @@ class SPATIALGDK_API USpatialInterop : public UObject
 public:
 	USpatialInterop();
 
-	void Init(USpatialOS* Instance, USpatialNetDriver* Driver, FTimerManager* TimerManager);
+	void Init(USpatialNetDriver* Driver, FTimerManager* TimerManager);
 
 	// Type bindings.
 	USpatialTypeBinding* GetTypeBindingByClass(UClass* Class) const;
@@ -218,21 +218,12 @@ public:
 	bool IsSingletonClass(UClass* Class);
 	NameToEntityIdMap* GetSingletonNameToEntityId() const;
 
-	// Accessors.
-	//USpatialOS* GetSpatialOS() const
-	//{
-	//	return SpatialOSInstance;
-	//}
-
 	USpatialNetDriver* GetNetDriver() const
 	{
 		return NetDriver;
 	}
 
 private:
-	//UPROPERTY()
-	//USpatialOS* SpatialOSInstance;
-
 	UPROPERTY()
 	USpatialNetDriver* NetDriver;
 
@@ -276,7 +267,6 @@ private:
 
 private:
 	void RegisterInteropType(UClass* Class, USpatialTypeBinding* Binding);
-	void UnregisterInteropType(UClass* Class);
 
 	void ResolvePendingOutgoingObjectUpdates(UObject* Object);
 	void ResolvePendingOutgoingRPCs(UObject* Object);

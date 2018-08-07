@@ -31,25 +31,6 @@ FORCEINLINE EReplicatedPropertyGroup GetGroupFromCondition(ELifetimeCondition Co
 	}
 }
 
-// TODO: Remove once we've upgraded to 14.0 and can disable component short circuiting. See TIG-137.
-FORCEINLINE bool HasComponentAuthority(TWeakPtr<worker::View> View, const worker::EntityId EntityId, const worker::ComponentId ComponentId)
-{
-	TSharedPtr<worker::View> PinnedView = View.Pin();
-	if (PinnedView.IsValid())
-	{
-		auto It = PinnedView->ComponentAuthority.find(EntityId);
-		if (It != PinnedView->ComponentAuthority.end())
-		{
-			auto ComponentIt = (*It).second.find(ComponentId);
-			if (ComponentIt != (*It).second.end())
-			{
-				return (*ComponentIt).second == worker::Authority::kAuthoritative;
-			}
-		}
-	}
-	return false;
-}
-
 // Storage for a changelist created by the replication system when replicating from the server.
 struct FPropertyChangeState
 {
@@ -227,7 +208,6 @@ public:
 
 	virtual void Init(USpatialInterop* Interop, USpatialPackageMapClient* PackageMap);
 	virtual void BindToView(bool bIsClient) PURE_VIRTUAL(USpatialTypeBinding::BindToView, );
-	virtual void UnbindFromView() PURE_VIRTUAL(USpatialTypeBinding::UnbindFromView, );
 	virtual UClass* GetBoundClass() const PURE_VIRTUAL(USpatialTypeBinding::GetBoundClass, return nullptr; );
 
 	virtual worker::Entity CreateActorEntity(const FString& ClientWorkerId, const FVector& Position, const FString& Metadata, const FPropertyChangeState& InitialChanges, USpatialActorChannel* Channel) const PURE_VIRTUAL(USpatialTypeBinding::CreateActorEntity, return worker::Entity{}; );
@@ -246,5 +226,25 @@ protected:
 	UPROPERTY()
 	USpatialPackageMapClient* PackageMap;
 
+	TSharedPtr<worker::View> View;
+
 	bool bIsSingleton;
+
+	// TODO: Remove once we've upgraded to 14.0 and can disable component short circuiting. See TIG-137.
+	FORCEINLINE bool HasComponentAuthority(const worker::EntityId EntityId, const worker::ComponentId ComponentId)
+	{
+		if (View.IsValid())
+		{
+			auto It = View->ComponentAuthority.find(EntityId);
+			if (It != View->ComponentAuthority.end())
+			{
+				auto ComponentIt = (*It).second.find(ComponentId);
+				if (ComponentIt != (*It).second.end())
+				{
+					return (*ComponentIt).second == worker::Authority::kAuthoritative;
+				}
+			}
+		}
+		return false;
+	}
 };

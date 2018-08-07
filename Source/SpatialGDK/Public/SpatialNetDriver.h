@@ -6,10 +6,9 @@
 #include "CoreOnline.h"
 #include "Engine.h"
 #include "IpNetDriver.h"
-#include "PlayerSpawnRequestSender.h"
 #include "SpatialGDKWorkerConfigurationData.h"
 #include "SpatialOutputDevice.h"
-#include "improbable/view.h"
+#include <improbable/view.h>
 
 #include "SpatialNetDriver.generated.h"
 
@@ -22,6 +21,8 @@ class USpatialNetConnection;
 class USpatialInterop;
 class USpatialInteropPipelineBlock;
 class USpatialPackageMapClient;
+class USpatialPlayerSpawner;
+class USpatialActorSpawner;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogSpatialOSNetDriver, Log, All);
 
@@ -62,42 +63,32 @@ public:
 	TSharedPtr<worker::View> View;
 
 	void Connect();
-	void USpatialNetDriver::IsConnected() const;
+	void WaitForConnection(std::uint32_t TimeoutMillis, worker::Future<worker::Connection> ConnectionFuture);
 
-	//USpatialOS* GetSpatialOS() const
-	//{
-	//	return SpatialOSInstance;
-	//}
+	UEntityRegistry* GetEntityRegistry() const { return EntityRegistry; }
+
+	USpatialInterop* GetSpatialInterop() const { return Interop; }
+
+	USpatialActorSpawner* GetActorSpawner() const { return ActorSpawner; }
 
 	// Returns the "100% reliable" connection to SpatialOS.
 	// On the server, it is designated to be the first client connection.
 	// On the client, this function is not meaningful (as we use ServerConnection)
 	USpatialNetConnection* GetSpatialOSNetConnection() const;
 
-	//UPROPERTY()
-	//USpatialInteropPipelineBlock* InteropPipelineBlock;
-
-	UEntityRegistry* GetEntityRegistry() { return EntityRegistry; }
-
-	//USpatialOS* GetSpatialOS() { return SpatialOSInstance; }
-	
 	// Used by USpatialSpawner (when new players join the game) and USpatialInteropPipelineBlock (when player controllers are migrated).
 	USpatialNetConnection* AcceptNewPlayer(const FURL& InUrl, bool bExistingPlayer);
-
-	USpatialInterop* GetSpatialInterop() const
-	{
-		return Interop;
-	}
 
 	TMap<UClass*, TPair<AActor*, USpatialActorChannel*>> SingletonActorChannels;
 
 protected:
 	FSpatialGDKWorkerConfigurationData WorkerConfig;
 
-	//UPROPERTY()
-	//USpatialOS* SpatialOSInstance;
+	USpatialActorSpawner* ActorSpawner;
 
 	//TUniquePtr<FSpatialOutputDevice> SpatialOutputDevice;
+
+	USpatialPlayerSpawner* PlayerSpawner;
 
 	UPROPERTY()
 	UEntityRegistry* EntityRegistry;
@@ -134,7 +125,6 @@ protected:
 #endif
 
 private:
-	//FPlayerSpawnRequestSender PlayerSpawner;
 
 	friend class USpatialNetConnection;
 };

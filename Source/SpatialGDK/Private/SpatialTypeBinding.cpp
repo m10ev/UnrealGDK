@@ -2,6 +2,8 @@
 
 #include "SpatialTypeBinding.h"
 #include "SpatialPackageMapClient.h"
+#include "SpatialInterop.h"
+#include "SpatialNetDriver.h"
 
 void USpatialTypeBinding::Init(USpatialInterop* InInterop, USpatialPackageMapClient* InPackageMap)
 {
@@ -10,4 +12,5 @@ void USpatialTypeBinding::Init(USpatialInterop* InInterop, USpatialPackageMapCli
 	Interop = InInterop;
 	PackageMap = InPackageMap;
 	bIsSingleton = false;
+	View = InInterop->GetNetDriver()->View;
 }

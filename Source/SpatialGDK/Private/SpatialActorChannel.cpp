@@ -68,8 +68,8 @@ void USpatialActorChannel::Init(UNetConnection* InConnection, int32 ChannelIndex
 	SpatialNetDriver = Cast<USpatialNetDriver>(Connection->Driver);
 	check(SpatialNetDriver);
 
-	//WorkerView = SpatialNetDriver->GetSpatialOS()->GetView();
-	//WorkerConnection = SpatialNetDriver->GetSpatialOS()->GetConnection();
+	WorkerConnection = SpatialNetDriver->Connection;
+	WorkerView = SpatialNetDriver->View;
 
 	BindToSpatialView();
 }
@@ -82,17 +82,16 @@ void USpatialActorChannel::BindToSpatialView()
 		return;
 	}
 
-	TSharedPtr<worker::View> PinnedView = WorkerView.Pin();
-	if (PinnedView.IsValid())
+	if (WorkerView.IsValid())
 	{
-		ReserveEntityCallback = PinnedView->OnReserveEntityIdResponse([this](const worker::ReserveEntityIdResponseOp& Op)
+		ReserveEntityCallback = WorkerView->OnReserveEntityIdResponse([this](const worker::ReserveEntityIdResponseOp& Op)
 		{
 			if (Op.RequestId == ReserveEntityIdRequestId)
 			{
 				OnReserveEntityIdResponse(Op);
 			}			
 		});
-		CreateEntityCallback = PinnedView->OnCreateEntityResponse([this](const worker::CreateEntityResponseOp& Op)
+		CreateEntityCallback = WorkerView->OnCreateEntityResponse([this](const worker::CreateEntityResponseOp& Op)
 		{
 			if (Op.RequestId == CreateEntityRequestId)
 			{
@@ -117,11 +116,10 @@ void USpatialActorChannel::DeleteEntityIfAuthoritative()
 	bool bHasAuthority = false;
 	USpatialInterop* Interop = SpatialNetDriver->GetSpatialInterop();
 
-	TSharedPtr<worker::View> PinnedView = WorkerView.Pin();
-	if (PinnedView.IsValid())
+	if (WorkerView.IsValid())
 	{
 		bHasAuthority = Interop->IsAuthoritativeDestructionAllowed()
-			&& PinnedView->GetAuthority<improbable::Position>(ActorEntityId) == worker::Authority::kAuthoritative;
+			&& WorkerView->GetAuthority<improbable::Position>(ActorEntityId) == worker::Authority::kAuthoritative;
 	}
 
 	UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Delete Entity request on %d. Has authority: %d "), ActorEntityId, bHasAuthority);
@@ -542,10 +540,9 @@ void USpatialActorChannel::SetChannelActor(AActor* InActor)
 		bCreatingNewEntity = true;
 
 		// Reserve an entity ID for this channel.
-		TSharedPtr<worker::Connection> PinnedConnection = WorkerConnection.Pin();
-		if (PinnedConnection.IsValid())
+		if (WorkerConnection.IsValid())
 		{
-			ReserveEntityIdRequestId = PinnedConnection->SendReserveEntityIdRequest(0);
+			ReserveEntityIdRequestId = WorkerConnection->SendReserveEntityIdRequest(0);
 		}
 		UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Opened channel for actor %s with no entity ID. Initiated reserve entity ID. Request id: %d"),
 			*InActor->GetName(), ReserveEntityIdRequestId.Id);
@@ -593,10 +590,9 @@ void USpatialActorChannel::OnReserveEntityIdResponse(const worker::ReserveEntity
 	}
 	UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Received entity id (%d) for: %s. Request id: %d"), Op.EntityId.value_or(0), *Actor->GetName(), ReserveEntityIdRequestId.Id);
 
-	auto PinnedView = WorkerView.Pin();
-	if (PinnedView.IsValid())
+	if (WorkerView.IsValid())
 	{
-		PinnedView->Remove(ReserveEntityCallback);
+		WorkerView->Remove(ReserveEntityCallback);
 	}
 
 	ActorEntityId = *Op.EntityId;
@@ -628,10 +624,9 @@ void USpatialActorChannel::OnCreateEntityResponse(const worker::CreateEntityResp
 	}
 	UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Created entity (%lld) for: %s. Request id: %d"), ActorEntityId, *Actor->GetName(), ReserveEntityIdRequestId.Id);
 
-	auto PinnedView = WorkerView.Pin();
-	if (PinnedView.IsValid())
+	if (WorkerView.IsValid())
 	{
-		PinnedView->Remove(CreateEntityCallback);
+		WorkerView->Remove(CreateEntityCallback);
 	}
 
 	UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Received create entity response op for %lld"), ActorEntityId);

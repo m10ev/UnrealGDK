@@ -4,14 +4,16 @@
 
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
+#include "Legacy/EntityRegistry.h"
+#include "SpatialNetDriver.h"
+
 #include <improbable/standard_library.h>
 #include <improbable/view.h>
-#include "SpatialNetDriver.h"
+#include <improbable/worker.h>
 
 #include "SpatialActorSpawner.generated.h"
 
-using namespace worker;
-using ComponentStorageBase = detail::ComponentStorageBase;
+using ComponentStorageBase = worker::detail::ComponentStorageBase;
 
 UCLASS()
 class SPATIALGDK_API USpatialActorSpawner : public UObject
@@ -26,28 +28,34 @@ public:
 
 	void RegisterCallbacks();
 	
-	void AddEntity(const AddEntityOp& op);
-	void RemoveEntity(const RemoveEntityOp& op);
-	void HitCriticalSection(const CriticalSectionOp& op);
+	void AddEntity(const worker::AddEntityOp& op);
+	void RemoveEntity(const worker::RemoveEntityOp& op);
+	void HitCriticalSection(const worker::CriticalSectionOp& op);
 	
 	void CreateActor(const worker::EntityId& EntityId);
 	AActor* SpawnActor(improbable::PositionData* PositionComponent, UClass* ActorClass, bool bDeferred);
 	void DeleteActor(const worker::EntityId& EntityId);
 
+	void CleanupDeletedActor(const worker::EntityId EntityId);
+
 	UClass* GetNativeEntityClass(improbable::MetadataData* MetadataComponent);
 
-	bool inCriticalSection;
+	bool IsInCriticalSection() { return inCriticalSection; }
 
 private:
-	TArray<AddEntityOp> PendingAddEntityOps;
-	TArray<RemoveEntityOp> PendingRemoveEntityOps;
-	TMap<EntityId, TArray<TSharedPtr<ComponentStorageBase>>> PendingAddComponentOps;
+	TArray<worker::AddEntityOp> PendingAddEntityOps;
+	TArray<worker::RemoveEntityOp> PendingRemoveEntityOps;
+	TMap<worker::EntityId, TArray<TSharedPtr<ComponentStorageBase>>> PendingAddComponentOps;
 
 	UEntityRegistry* EntityRegistry;
 
 	USpatialNetDriver* NetDriver;
-	TSharedPtr<Connection> Connection;
-	TSharedPtr<View> View;
+	TSharedPtr<worker::Connection> Connection;
+	TSharedPtr<worker::View> View;
+
+	UWorld* World;
+
+	bool inCriticalSection;
 
 	template <typename Metaclass>
 	typename Metaclass::Data* GetComponentDataFromView(const worker::EntityId& EntityId)

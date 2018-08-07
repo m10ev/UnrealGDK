@@ -7,6 +7,7 @@
 #include "SpatialConstants.h"
 #include "SpatialNetConnection.h"
 #include "SpatialNetDriver.h"
+#include "SpatialActorSpawner.h"
 #include "SpatialPackageMapClient.h"
 
 // Needed for the entity template stuff.
@@ -22,7 +23,7 @@ USpatialInterop::USpatialInterop()
 {
 }
 
-void USpatialInterop::Init(USpatialOS* Instance, USpatialNetDriver* Driver, FTimerManager* InTimerManager)
+void USpatialInterop::Init(USpatialNetDriver* Driver, FTimerManager* InTimerManager)
 {
 	//SpatialOSInstance = Instance;
 	NetDriver = Driver;
@@ -54,7 +55,7 @@ void USpatialInterop::Init(USpatialOS* Instance, USpatialNetDriver* Driver, FTim
 		}
 	}
 
-	TSharedPtr<worker::View> View;// = SpatialOSInstance->GetView().Pin();
+	const TSharedPtr<worker::View>& View = NetDriver->View;
 
 	// Global State Manager setup
 	View->OnAddComponent<improbable::unreal::GlobalStateManager>([this](const worker::AddComponentOp<improbable::unreal::GlobalStateManager>& op)
@@ -95,7 +96,8 @@ USpatialTypeBinding* USpatialInterop::GetTypeBindingByClass(UClass* Class) const
 worker::RequestId<worker::CreateEntityRequest> USpatialInterop::SendCreateEntityRequest(USpatialActorChannel* Channel, const FVector& Location, const FString& PlayerWorkerId, const TArray<uint16>& RepChanged, const TArray<uint16>& HandoverChanged)
 {
 	worker::RequestId<worker::CreateEntityRequest> CreateEntityRequestId;
-	TSharedPtr<worker::Connection> PinnedConnection;// = SpatialOSInstance->GetConnection().Pin();
+	const TSharedPtr<worker::Connection> PinnedConnection = NetDriver->Connection;
+
 	if (PinnedConnection.IsValid())
 	{
 		AActor* Actor = Channel->Actor;
@@ -244,6 +246,7 @@ void USpatialInterop::ReceiveAddComponent(USpatialActorChannel* Channel, worker:
 void USpatialInterop::ResolvePendingOperations(UObject* Object, const improbable::unreal::UnrealObjectRef& ObjectRef)
 {
 	//if (NetDriver->InteropPipelineBlock->IsInCriticalSection())
+	if(NetDriver->GetActorSpawner()->IsInCriticalSection())
 	{
 		ResolvedObjectQueue.Add(TPair<UObject*, const improbable::unreal::UnrealObjectRef>{ Object, ObjectRef });
 		return;
@@ -307,7 +310,7 @@ void USpatialInterop::RemoveActorChannel(const worker::EntityId& EntityId)
 void USpatialInterop::DeleteEntity(const worker::EntityId& EntityId)
 {
 	SendDeleteEntityRequest(EntityId);
-	//NetDriver->InteropPipelineBlock->CleanupDeletedEntity(EntityId);
+	NetDriver->GetActorSpawner()->CleanupDeletedActor(EntityId);
 }
 
 void USpatialInterop::SendComponentInterests(USpatialActorChannel* ActorChannel, const worker::EntityId& EntityId)
@@ -318,7 +321,7 @@ void USpatialInterop::SendComponentInterests(USpatialActorChannel* ActorChannel,
 	if (Binding)
 	{
 		auto Interest = Binding->GetInterestOverrideMap(NetDriver->GetNetMode() == NM_Client, ActorChannel->Actor->Role == ROLE_AutonomousProxy);
-		//SpatialOSInstance->GetConnection().Pin()->SendComponentInterest(EntityId.ToSpatialEntityId(), Interest);
+		NetDriver->Connection->SendComponentInterest(EntityId, Interest);
 	}
 }
 
@@ -546,17 +549,6 @@ void USpatialInterop::RegisterInteropType(UClass* Class, USpatialTypeBinding* Bi
 	Binding->Init(this, PackageMap);
 	Binding->BindToView(NetDriver->GetNetMode() == NM_Client);
 	TypeBindings.Add(Class, Binding);
-}
-
-void USpatialInterop::UnregisterInteropType(UClass* Class)
-{
-	USpatialTypeBinding** BindingIterator = TypeBindings.Find(Class);
-	if (BindingIterator != nullptr)
-	{
-		USpatialTypeBinding* Binding = *BindingIterator;
-		Binding->UnbindFromView();
-		TypeBindings.Remove(Class);
-	}
 }
 
 void USpatialInterop::ResolvePendingOutgoingObjectUpdates(UObject* Object)
@@ -869,7 +861,7 @@ bool USpatialInterop::IsSingletonClass(UClass* Class)
 
 NameToEntityIdMap* USpatialInterop::GetSingletonNameToEntityId() const
 {
-	TSharedPtr<worker::View> View;// = SpatialOSInstance->GetView().Pin();
+	const TSharedPtr<worker::View>& View = NetDriver->View;
 	auto It = View->Entities.find(SpatialConstants::GLOBAL_STATE_MANAGER);
 
 	if (It != View->Entities.end())

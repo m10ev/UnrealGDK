@@ -22,12 +22,13 @@ void USpatialActorSpawner::Init(USpatialNetDriver* NetDriver, UEntityRegistry* E
 	this->Connection = NetDriver->Connection;
 	this->View = NetDriver->View;
 	this->EntityRegistry = EntityRegistry;
+	World = NetDriver->GetWorld();
 }
 
 template <typename T>
 void USpatialActorSpawner::Accept()
 {
-	View->OnAddComponent<T>([this](const AddComponentOp<T>& op) {
+	View->OnAddComponent<T>([this](const worker::AddComponentOp<T>& op) {
 		if(this->inCriticalSection)
 		{
 			TSharedPtr<worker::detail::ComponentStorage<T>> Component = MakeShared<worker::detail::ComponentStorage<T>>(op.Data);
@@ -44,22 +45,22 @@ void USpatialActorSpawner::Accept()
 
 void USpatialActorSpawner::RegisterCallbacks()
 {
-	View->OnAddEntity([this](const AddEntityOp& op) {
+	View->OnAddEntity([this](const worker::AddEntityOp& op) {
 		AddEntity(op);
 	});
 
-	View->OnRemoveEntity([this](const RemoveEntityOp& op) {
+	View->OnRemoveEntity([this](const worker::RemoveEntityOp& op) {
 		RemoveEntity(op);
 	});
 
-	View->OnCriticalSection([this](const CriticalSectionOp op) {
+	View->OnCriticalSection([this](const worker::CriticalSectionOp op) {
 		HitCriticalSection(op);
 	});
 
 	ForEachComponent(improbable::unreal::Components{}, *this);
 }
 
-void USpatialActorSpawner::AddEntity(const AddEntityOp& op)
+void USpatialActorSpawner::AddEntity(const worker::AddEntityOp& op)
 {
 	if(inCriticalSection)
 	{
@@ -68,7 +69,7 @@ void USpatialActorSpawner::AddEntity(const AddEntityOp& op)
 	}
 }
 
-void USpatialActorSpawner::RemoveEntity(const RemoveEntityOp& op)
+void USpatialActorSpawner::RemoveEntity(const worker::RemoveEntityOp& op)
 {
 	if(inCriticalSection)
 	{
@@ -77,7 +78,7 @@ void USpatialActorSpawner::RemoveEntity(const RemoveEntityOp& op)
 	}
 }
 
-void USpatialActorSpawner::HitCriticalSection(const CriticalSectionOp& op)
+void USpatialActorSpawner::HitCriticalSection(const worker::CriticalSectionOp& op)
 {
 	if(!inCriticalSection)
 	{
@@ -87,13 +88,13 @@ void USpatialActorSpawner::HitCriticalSection(const CriticalSectionOp& op)
 	{
 		inCriticalSection = false;
 
-		for(const AddEntityOp& AddOp : PendingAddEntityOps)
+		for(const worker::AddEntityOp& AddOp : PendingAddEntityOps)
 		{
 			AddEntity(AddOp);
 		}
 		PendingAddEntityOps.Empty();
 
-		for(const RemoveEntityOp& RemoveOp : PendingRemoveEntityOps)
+		for(const worker::RemoveEntityOp& RemoveOp : PendingRemoveEntityOps)
 		{
 			RemoveEntity(RemoveOp);
 		}
@@ -267,26 +268,33 @@ void USpatialActorSpawner::CreateActor(const worker::EntityId& EntityId)
 
 AActor* USpatialActorSpawner::SpawnActor(improbable::PositionData* PositionComponent, UClass* ActorClass, bool bDeferred)
 {
-	//FVector InitialLocation = SpatialConstants::SpatialOSCoordinatesToLocation(PositionComponent->coords());
-	//AActor* NewActor = nullptr;
-	//if (ActorClass)
-	//{
-	//	//bRemoteOwned needs to be public in source code. This might be a controversial change.
-	//	FActorSpawnParameters SpawnInfo;
-	//	SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	//	SpawnInfo.bRemoteOwned = !NetDriver->IsServer();
-	//	SpawnInfo.bNoFail = true;
-	//	// We defer the construction in the GDK pipeline to allow initialization of replicated properties first.
-	//	SpawnInfo.bDeferConstruction = bDeferred;
+	FVector InitialLocation = SpatialConstants::SpatialOSCoordinatesToLocation(PositionComponent->coords());
+	AActor* NewActor = nullptr;
+	if (ActorClass)
+	{
+		//bRemoteOwned needs to be public in source code. This might be a controversial change.
+		FActorSpawnParameters SpawnInfo;
+		SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		SpawnInfo.bRemoteOwned = !NetDriver->IsServer();
+		SpawnInfo.bNoFail = true;
+		// We defer the construction in the GDK pipeline to allow initialization of replicated properties first.
+		SpawnInfo.bDeferConstruction = bDeferred;
 
-	//	FVector SpawnLocation = FRepMovement::RebaseOntoLocalOrigin(InitialLocation, World->OriginLocation);
+		FVector SpawnLocation = FRepMovement::RebaseOntoLocalOrigin(InitialLocation, World->OriginLocation);
 
-	//	NewActor = World->SpawnActorAbsolute(ActorClass, FTransform(FRotator::ZeroRotator, SpawnLocation), SpawnInfo);
-	//	check(NewActor);
-	//}
+		NewActor = World->SpawnActorAbsolute(ActorClass, FTransform(FRotator::ZeroRotator, SpawnLocation), SpawnInfo);
+		check(NewActor);
+	}
 
-	//return NewActor;
-	return nullptr;
+	return NewActor;
+}
+
+void USpatialActorSpawner::CleanupDeletedActor(const worker::EntityId EntityId)
+{
+	EntityRegistry->RemoveFromRegistry(EntityId);
+	NetDriver->GetSpatialInterop()->RemoveActorChannel(EntityId);
+	auto* PackageMap = Cast<USpatialPackageMapClient>(NetDriver->GetSpatialOSNetConnection()->PackageMap);
+	PackageMap->RemoveEntityActor(EntityId);
 }
 
 UClass* USpatialActorSpawner::GetNativeEntityClass(improbable::MetadataData* MetadataComponent)

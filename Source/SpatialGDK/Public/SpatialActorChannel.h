@@ -49,11 +49,10 @@ public:
 			return false;
 		}
 
-		TSharedPtr<worker::View> View = WorkerView.Pin();
-		if (View.Get())
+		if (WorkerView.IsValid())
 		{
 			// This will never fail because we can't have an actor channel without having checked out the entity.
-			auto& EntityAuthority = View->ComponentAuthority[ActorEntityId];
+			auto& EntityAuthority = WorkerView->ComponentAuthority[ActorEntityId];
 			auto ComponentIterator = EntityAuthority.find(ServerRPCsComponentId);
 			if (ComponentIterator != EntityAuthority.end())
 			{
@@ -121,8 +120,8 @@ private:
 	void OnReserveEntityIdResponse(const worker::ReserveEntityIdResponseOp& Op);
 	void OnCreateEntityResponse(const worker::CreateEntityResponseOp& Op);
 
-	TWeakPtr<worker::Connection> WorkerConnection;
-	TWeakPtr<worker::View> WorkerView;
+	TSharedPtr<worker::Connection> WorkerConnection;
+	TSharedPtr<worker::View> WorkerView;
 	worker::EntityId ActorEntityId;
 
 	worker::Dispatcher::CallbackKey ReserveEntityCallback;
