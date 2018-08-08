@@ -367,44 +367,42 @@ bool USpatialActorChannel::ReplicateActor()
 	{		
 		if (RepFlags.bNetInitial && bCreatingNewEntity)
 		{
-			if (!Actor->IsFullNameStableForNetworking() || SpatialNetDriver->GetSpatialInterop()->CanSpawnReplicatedStablyNamedActors())
+			check(!Actor->IsFullNameStableForNetworking() || Interop->CanSpawnReplicatedStablyNamedActors());
+			// When a player is connected, a FUniqueNetIdRepl is created with the players worker ID. This eventually gets stored
+			// inside APlayerState::UniqueId when UWorld::SpawnPlayActor is called. If this actor channel is managing a pawn or a 
+			// player controller, get the player state.
+			FString PlayerWorkerId;
+			APlayerState* PlayerState = Cast<APlayerState>(Actor);
+			if (!PlayerState)
 			{
-				// When a player is connected, a FUniqueNetIdRepl is created with the players worker ID. This eventually gets stored
-				// inside APlayerState::UniqueId when UWorld::SpawnPlayActor is called. If this actor channel is managing a pawn or a 
-				// player controller, get the player state.
-				FString PlayerWorkerId;
-				APlayerState* PlayerState = Cast<APlayerState>(Actor);
-				if (!PlayerState)
+				if (APawn* Pawn = Cast<APawn>(Actor))
 				{
-					if (APawn* Pawn = Cast<APawn>(Actor))
-					{
-						PlayerState = Pawn->PlayerState;
-					}
+					PlayerState = Pawn->PlayerState;
 				}
-				if (!PlayerState)
-				{
-					if (PlayerController)
-					{
-						PlayerState = PlayerController->PlayerState;
-					}
-				}
-				if (PlayerState)
-				{
-					PlayerWorkerId = PlayerState->UniqueId.ToString();
-				}
-				else
-				{
-					UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Unable to find PlayerState for %s, this usually means that this actor is not owned by a player."), *Actor->GetClass()->GetName());
-				}
-
-				// Ensure that the initial changelist contains _every_ property. This ensures that the default properties are written to the entity template.
-				// Otherwise, there will be a mismatch between the rep state shadow data used by CompareProperties and the entity in SpatialOS.
-				TArray<uint16> InitialRepChanged = SkipOverChangelistArrays(*ActorReplicator);
-
-				// Calculate initial spatial position (but don't send component update) and create the entity.
-				LastSpatialPosition = GetActorSpatialPosition(Actor);
-				CreateEntityRequestId = Interop->SendCreateEntityRequest(this, LastSpatialPosition, PlayerWorkerId, InitialRepChanged, HandoverChanged);
 			}
+			if (!PlayerState)
+			{
+				if (PlayerController)
+				{
+					PlayerState = PlayerController->PlayerState;
+				}
+			}
+			if (PlayerState)
+			{
+				PlayerWorkerId = PlayerState->UniqueId.ToString();
+			}
+			else
+			{
+				UE_LOG(LogSpatialGDKActorChannel, Log, TEXT("Unable to find PlayerState for %s, this usually means that this actor is not owned by a player."), *Actor->GetClass()->GetName());
+			}
+
+			// Ensure that the initial changelist contains _every_ property. This ensures that the default properties are written to the entity template.
+			// Otherwise, there will be a mismatch between the rep state shadow data used by CompareProperties and the entity in SpatialOS.
+			TArray<uint16> InitialRepChanged = SkipOverChangelistArrays(*ActorReplicator);
+
+			// Calculate initial spatial position (but don't send component update) and create the entity.
+			LastSpatialPosition = GetActorSpatialPosition(Actor);
+			CreateEntityRequestId = Interop->SendCreateEntityRequest(this, LastSpatialPosition, PlayerWorkerId, InitialRepChanged, HandoverChanged);
 		}
 		else
 		{
@@ -548,8 +546,8 @@ void USpatialActorChannel::SetChannelActor(AActor* InActor)
 		// has the Global State Manager) to avoid having multiple copies of replicated stably named actors in SpatialOS
 		if (InActor->IsFullNameStableForNetworking())
 		{
-			USpatialPackageMapClient* PackageMap = Cast<USpatialPackageMapClient>(SpatialNetDriver->GetSpatialOSNetConnection()->PackageMap);
-			PackageMap->ResolveStablyNamedObject(InActor);
+			/*USpatialPackageMapClient* PackageMap = Cast<USpatialPackageMapClient>(SpatialNetDriver->GetSpatialOSNetConnection()->PackageMap);
+			PackageMap->ResolveStablyNamedObject(InActor);*/
 			SpatialNetDriver->GetSpatialInterop()->ReserveReplicatedStablyNamedActorChannel(this);
 		}
 		else
@@ -641,6 +639,25 @@ void USpatialActorChannel::RegisterEntityId(const FEntityId& ActorEntityId)
 	if (Interop->IsSingletonClass(Actor->GetClass()))
 	{
 		Interop->AddSingletonToGSM(Actor->GetClass()->GetPathName(), ActorEntityId);
+	}
+
+	if (Actor->IsFullNameStableForNetworking())
+	{
+		USpatialPackageMapClient* PackageMap = Cast<USpatialPackageMapClient>(SpatialNetDriver->GetSpatialOSNetConnection()->PackageMap);
+
+		uint32 CurrentOffset = 0;
+		worker::Map<std::string, std::uint32_t> SubobjectNameToOffset;
+		ForEachObjectWithOuter(Actor, [&CurrentOffset, &SubobjectNameToOffset](UObject* Object)
+		{
+			// Objects can only be allocated NetGUIDs if this is true.
+			if (Object->IsSupportedForNetworking() && !Object->IsPendingKill() && !Object->IsEditorOnly())
+			{
+				SubobjectNameToOffset.emplace(TCHAR_TO_UTF8(*(Object->GetName())), CurrentOffset);
+				CurrentOffset++;
+			}
+		});
+
+		PackageMap->ResolveEntityActor(Actor, ActorEntityId, SubobjectNameToOffset);
 	}
 }
 

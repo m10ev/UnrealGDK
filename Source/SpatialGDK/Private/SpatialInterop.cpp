@@ -892,9 +892,7 @@ improbable::unreal::GlobalStateManagerData* USpatialInterop::GetGlobalStateManag
 
 StringToEntityIdMap* USpatialInterop::GetSingletonNameToEntityId() const
 {
-	improbable::unreal::GlobalStateManagerData* GSMD = GetGlobalStateManagerData();
-
-	if (GSMD)
+	if (improbable::unreal::GlobalStateManagerData* GSMD = GetGlobalStateManagerData())
 	{
 		return &(GSMD->singleton_name_to_entity_id());
 	}
@@ -904,9 +902,7 @@ StringToEntityIdMap* USpatialInterop::GetSingletonNameToEntityId() const
 
 StringToEntityIdMap* USpatialInterop::GetStablyNamedPathToEntityId() const
 {
-	improbable::unreal::GlobalStateManagerData* GSMD = GetGlobalStateManagerData();
-
-	if (GSMD)
+	if (improbable::unreal::GlobalStateManagerData* GSMD = GetGlobalStateManagerData())
 	{
 		return &(GSMD->stably_named_path_to_entity_id());
 	}
@@ -960,7 +956,7 @@ void USpatialInterop::RegisterReplicatedStablyNamedActors()
 	bCanSpawnReplicatedStablyNamedActors = true;
 	StringToEntityIdMap& StablyNamedPathToEntityId = *GetStablyNamedPathToEntityId();
 
-	for (auto& Pair : ReplicatedStablyNamedActorQueue)
+	for (const auto& Pair : ReplicatedStablyNamedActorQueue)
 	{
 		USpatialActorChannel* Channel = Pair.Value;
 		AActor* Actor = Pair.Key;
@@ -982,7 +978,7 @@ void USpatialInterop::RegisterReplicatedStablyNamedActors()
 
 void USpatialInterop::DeleteIrrelevantReplicatedStablyNamedActors(const StringToEntityIdMap& StablyNamedPathToEntityId)
 {
-	for (auto& Pair : StablyNamedPathToEntityId)
+	for (const auto& Pair : StablyNamedPathToEntityId)
 	{
 		FString FullPath = UTF8_TO_TCHAR(Pair.first.c_str());
 		AActor* Actor = FindObject<AActor>(GetWorld(), *FullPath);
@@ -1001,6 +997,10 @@ void USpatialInterop::DeleteIrrelevantReplicatedStablyNamedActors(const StringTo
 				{
 					UE_LOG(LogSpatialGDKInterop, Log, TEXT("Timed out (deleted) replicated stably named actor: %s"), *ActorPtr->GetName());
 
+					/*if (PackageMap->GetNetGUIDFromStablyNamedObject(ActorPtr.Get()).IsValid())
+					{
+						PackageMap->RemoveStablyNamedObject(ActorPtr.Get());
+					}*/
 					LocallyDeleteActor(ActorPtr.Get());
 				}
 			});
