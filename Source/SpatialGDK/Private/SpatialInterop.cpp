@@ -188,7 +188,7 @@ worker::RequestId<worker::DeleteEntityRequest> USpatialInterop::SendDeleteEntity
 
 void USpatialInterop::SendSpatialPositionUpdate(const worker::EntityId& EntityId, const FVector& Location)
 {
-	TSharedPtr<worker::Connection> PinnedConnection;// = SpatialOSInstance->GetConnection().Pin();
+	TSharedPtr<worker::Connection> PinnedConnection = NetDriver->Connection;
 	if (!PinnedConnection.IsValid())
 	{
 		UE_LOG(LogSpatialGDKInterop, Warning, TEXT("Failed to obtain reference to SpatialOS connection!"));
@@ -233,14 +233,14 @@ void USpatialInterop::InvokeRPC(UObject* TargetObject, const UFunction* const Fu
 	Binding->SendRPCCommand(TargetObject, Function, Parameters);
 }
 
-void USpatialInterop::ReceiveAddComponent(USpatialActorChannel* Channel, worker::detail::ComponentStorageBase* Component)
+void USpatialInterop::ReceiveAddComponent(USpatialActorChannel* Channel, FAddComponent AddComponent)
 {
 	const USpatialTypeBinding* Binding = GetTypeBindingByClass(Channel->Actor->GetClass());
 	if (!Binding)
 	{
 		return;
 	}
-	Binding->ReceiveAddComponent(Channel, Component);
+	Binding->ReceiveAddComponent(Channel, AddComponent);
 }
 
 void USpatialInterop::ResolvePendingOperations(UObject* Object, const improbable::unreal::UnrealObjectRef& ObjectRef)
@@ -845,7 +845,7 @@ void USpatialInterop::UpdateGlobalStateManager(const FString& ClassName, const w
 	improbable::unreal::GlobalStateManager::Update Update;
 	Update.set_singleton_name_to_entity_id(SingletonNameToEntityId);
 
-	TSharedPtr<worker::Connection> Connection;// = SpatialOSInstance->GetConnection().Pin();
+	TSharedPtr<worker::Connection> Connection = NetDriver->Connection;
 	Connection->SendComponentUpdate<improbable::unreal::GlobalStateManager>(worker::EntityId((long)SpatialConstants::GLOBAL_STATE_MANAGER), Update);
 }
 

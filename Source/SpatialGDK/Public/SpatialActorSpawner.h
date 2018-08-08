@@ -15,6 +15,12 @@
 
 using ComponentStorageBase = worker::detail::ComponentStorageBase;
 
+struct FAddComponent
+{
+	worker::ComponentId ComponentId;
+	TSharedPtr<ComponentStorageBase> Component;
+};
+
 UCLASS()
 class SPATIALGDK_API USpatialActorSpawner : public UObject
 {
@@ -45,7 +51,7 @@ public:
 private:
 	TArray<worker::AddEntityOp> PendingAddEntityOps;
 	TArray<worker::RemoveEntityOp> PendingRemoveEntityOps;
-	TMap<worker::EntityId, TArray<TSharedPtr<ComponentStorageBase>>> PendingAddComponentOps;
+	TMap<worker::EntityId, TArray<FAddComponent>> PendingAddComponentOps;
 
 	UEntityRegistry* EntityRegistry;
 

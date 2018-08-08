@@ -32,13 +32,14 @@ void USpatialActorSpawner::Accept()
 		if(this->inCriticalSection)
 		{
 			TSharedPtr<worker::detail::ComponentStorage<T>> Component = MakeShared<worker::detail::ComponentStorage<T>>(op.Data);
+			FAddComponent AddComponentWrapper{T::ComponentId, Component};
 
 			if(PendingAddComponentOps.Find(op.EntityId) == nullptr)
 			{
-				PendingAddComponentOps.Add(op.EntityId, TArray<TSharedPtr<ComponentStorageBase>>());
+				PendingAddComponentOps.Add(op.EntityId, TArray<FAddComponent>());
 			}
 
-			PendingAddComponentOps[op.EntityId].Add(Component);
+			PendingAddComponentOps[op.EntityId].Add(AddComponentWrapper);
 		}
 	});
 }
@@ -67,6 +68,8 @@ void USpatialActorSpawner::AddEntity(const worker::AddEntityOp& op)
 		PendingAddEntityOps.Add(op);
 		return;
 	}
+
+	CreateActor(op.EntityId);
 }
 
 void USpatialActorSpawner::RemoveEntity(const worker::RemoveEntityOp& op)
@@ -148,7 +151,6 @@ void USpatialActorSpawner::CreateActor(const worker::EntityId& EntityId)
 	{
 		if (UClass* ActorClass = GetNativeEntityClass(MetadataComponent)) 
 		{
-			// Option 3
 			USpatialInterop* Interop = NetDriver->GetSpatialInterop();
 			check(Interop);
 
@@ -227,16 +229,12 @@ void USpatialActorSpawner::CreateActor(const worker::EntityId& EntityId)
 			// Apply initial replicated properties.
 			// This was moved to after FinishingSpawning because components existing only in blueprints aren't added until spawning is complete
 			// Potentially we could split out the initial actor state and the initial component state
-			//for (FPendingAddComponentWrapper& PendingAddComponent : PendingAddComponents)
-			//{
-			//	NetDriver->GetSpatialInterop()->ReceiveAddComponent(Channel, PendingAddComponent.AddComponentOp);
-			//}
-
-			TArray<TSharedPtr<ComponentStorageBase>> PendingAddComponentData = PendingAddComponentOps[EntityId];
-			for(const TSharedPtr<ComponentStorageBase>& ComponentData : PendingAddComponentData )
+			TArray<FAddComponent>& PendingAddComponents = PendingAddComponentOps[EntityId];
+			for(const FAddComponent& AddComponent : PendingAddComponents )
 			{
-				NetDriver->GetSpatialInterop()->ReceiveAddComponent(Channel, ComponentData.Get());
+				NetDriver->GetSpatialInterop()->ReceiveAddComponent(Channel, AddComponent);
 			}
+			PendingAddComponentOps.Remove(EntityId);
 
 			// Update interest on the entity's components after receiving initial component data (so Role and RemoteRole are properly set).
 			NetDriver->GetSpatialInterop()->SendComponentInterests(Channel, EntityId);

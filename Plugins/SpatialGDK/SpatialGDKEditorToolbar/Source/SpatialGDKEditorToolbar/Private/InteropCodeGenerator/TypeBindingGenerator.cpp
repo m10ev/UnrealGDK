@@ -553,7 +553,7 @@ void GenerateTypeBindingHeader(FCodeWriter& HeaderWriter, FString SchemaFilename
 		void SendComponentUpdates(const FPropertyChangeState& Changes, USpatialActorChannel* Channel, const worker::EntityId& EntityId) const override;
 		void SendRPCCommand(UObject* TargetObject, const UFunction* const Function, void* Parameters) override;
 
-		void ReceiveAddComponent(USpatialActorChannel* Channel, worker::detail::ComponentStorageBase* Component) const override;
+		void ReceiveAddComponent(USpatialActorChannel* Channel, FAddComponent AddComponent) const override;
 		worker::Map<worker::ComponentId, worker::InterestOverride> GetInterestOverrideMap(bool bIsClient, bool bAutonomousProxy) const override;)""");
 
 	HeaderWriter.PrintNewLine();
@@ -1274,34 +1274,35 @@ void GenerateFunction_SendRPCCommand(FCodeWriter& SourceWriter, UClass* Class)
 void GenerateFunction_ReceiveAddComponent(FCodeWriter& SourceWriter, UClass* Class, TArray<UClass*> Components)
 {
 	SourceWriter.BeginFunction(
-		{"void", "ReceiveAddComponent(USpatialActorChannel* Channel, UAddComponentOpWrapperBase* AddComponentOp) const"},
+		{"void", "ReceiveAddComponent(USpatialActorChannel* Channel, FAddComponent AddComponent) const"},
 		TypeBindingName(Class));
-	/*for (EReplicatedPropertyGroup Group : GetAllReplicatedPropertyGroups())
+	for (EReplicatedPropertyGroup Group : GetAllReplicatedPropertyGroups())
 	{
 		SourceWriter.Printf(R"""(
-			auto* %sAddOp = Cast<U%sAddComponentOp>(AddComponentOp);
-			if (%sAddOp)
+			if (AddComponent.ComponentId == %s::ComponentId)
 			{
-				auto Update = %s::Update::FromInitialData(*%sAddOp->Data.data());
+				auto* %sAddOp = static_cast<worker::detail::ComponentStorage<%s>*>(AddComponent.Component.Get());
+				auto Update = %s::Update::FromInitialData(%sAddOp->Get());
 				ReceiveUpdate_%s(Channel, Update);
 				return;
 			})""",
+			*SchemaReplicatedDataName(Group, Class, true),
 			*GetReplicatedPropertyGroupName(Group),
-			*SchemaReplicatedDataName(Group, Class),
-			*GetReplicatedPropertyGroupName(Group),
+			*SchemaReplicatedDataName(Group, Class, true),
 			*SchemaReplicatedDataName(Group, Class, true),
 			*GetReplicatedPropertyGroupName(Group),
 			*GetReplicatedPropertyGroupName(Group));
 	}
 	SourceWriter.Printf(R"""(
-		auto* HandoverDataAddOp = Cast<U%sAddComponentOp>(AddComponentOp);
-		if (HandoverDataAddOp)
+		if (AddComponent.ComponentId == %s::ComponentId)
 		{
-			auto Update = %s::Update::FromInitialData(*HandoverDataAddOp->Data.data());
+			auto* HandoverDataAddOp = static_cast<worker::detail::ComponentStorage<%s>*>(AddComponent.Component.Get());
+			auto Update = %s::Update::FromInitialData(HandoverDataAddOp->Get());
 			ReceiveUpdate_Handover(Channel, Update);
 			return;
 		})""",
-		*SchemaHandoverDataName(Class),
+		*SchemaHandoverDataName(Class, true),
+		*SchemaHandoverDataName(Class, true),
 		*SchemaHandoverDataName(Class, true));
 
 	for (UClass* ComponentClass : Components)
@@ -1311,7 +1312,7 @@ void GenerateFunction_ReceiveAddComponent(FCodeWriter& SourceWriter, UClass* Cla
 		SourceWriter.Printf("USpatialTypeBinding_%s* %sTypeBinding = Cast<USpatialTypeBinding_%s>(Interop->GetTypeBindingByClass(%s::StaticClass()));",
 			*ClassName, *ClassName, *ClassName, *GetFullCPPName(ComponentClass));
 		SourceWriter.Printf("%sTypeBinding->ReceiveAddComponent(Channel, AddComponentOp);", *ClassName);
-	}*/
+	}
 
 	SourceWriter.End();
 }

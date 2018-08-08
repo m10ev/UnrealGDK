@@ -99,9 +99,6 @@ void USpatialNetDriver::OnMapLoaded(UWorld* LoadedWorld)
 	// Set the timer manager.
 	TimerManager = &LoadedWorld->GetTimerManager();
 
-	// Connect to SpatialOS.
-	//SpatialOSInstance->ApplyConfiguration(WorkerConfig);
-	//SpatialOSInstance->Connect();
 	Connect();
 
 	// Set up manager objects.
@@ -111,16 +108,21 @@ void USpatialNetDriver::OnMapLoaded(UWorld* LoadedWorld)
 
 void USpatialNetDriver::Connect()
 {
-	worker::ConnectionParameters Params;
-	const FString Hostname;
-	std::uint16_t Port;
-	const FString WorkerId;
+	worker::NetworkParameters NetworkParams;
+	NetworkParams.ConnectionType = worker::NetworkConnectionType::kRaknet;
+	worker::ConnectionParameters ConnectionParams;
+	ConnectionParams.Network = NetworkParams;
+	ConnectionParams.WorkerType = TCHAR_TO_UTF8(*WorkerConfig.SpatialGDKApplication.WorkerPlatform);
 
-	uint32_t TimeoutMillis;
+	const FString Hostname = TEXT("127.0.0.1");
+	std::uint16_t Port = 7777;
+	const FString WorkerId = WorkerConfig.SpatialGDKApplication.WorkerPlatform + FGuid::NewGuid().ToString();
 
-	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [&]() {
+	std::uint32_t TimeoutMillis = 10000;
+
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [=]() {
 		worker::Future<worker::Connection> ConnectionFuture = worker::Connection::ConnectAsync(improbable::unreal::Components{},
-			std::string(TCHAR_TO_UTF8(*Hostname)), Port, std::string(TCHAR_TO_UTF8(*WorkerId)), Params);
+			std::string(TCHAR_TO_UTF8(*Hostname)), Port, std::string(TCHAR_TO_UTF8(*WorkerId)), ConnectionParams);
 
 		WaitForConnection(TimeoutMillis, std::move(ConnectionFuture));
 	});

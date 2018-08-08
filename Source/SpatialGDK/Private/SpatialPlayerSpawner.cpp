@@ -37,6 +37,10 @@ void USpatialPlayerSpawner::ReceivePlayerSpawnRequest(const CommandRequestOp<imp
 	URLString.Append(TEXT("?workerId=")).Append(UTF8_TO_TCHAR(op.CallerWorkerId.c_str()));
 
 	NetDriver->AcceptNewPlayer(FURL(nullptr, *URLString, TRAVEL_Absolute), false);
+
+	PlayerSpawner::Commands::SpawnPlayer::Response Response;
+	Response.set_success(true);
+	NetDriver->Connection->SendCommandResponse<improbable::unreal::PlayerSpawner::Commands::SpawnPlayer>(op.RequestId, Response);
 }
 
 void USpatialPlayerSpawner::SendPlayerSpawnRequest()
